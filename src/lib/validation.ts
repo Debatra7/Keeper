@@ -51,10 +51,11 @@ function validCollection(value: unknown): value is Collection {
 
 function validPreferences(value: unknown): value is Preferences {
   if (!record(value)) return false;
-  const imageOk = value.image === '' || typeof value.image === 'string' && value.image.length <= 2_100_000 && (/^https:\/\//i.test(value.image) || /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z\d+/]+=*$/i.test(value.image));
+  const imageOk = value.image === '' || typeof value.image === 'string' && value.image.length <= 2048 && /^https:\/\//i.test(value.image);
+  const imagePathOk = value.imagePath === undefined || value.imagePath === '' || typeof value.imagePath === 'string' && value.imagePath.length <= 300 && !value.imagePath.startsWith('/') && !value.imagePath.includes('..');
   // Accept numeric strings for size (database returns text columns as strings).
   const sizeNum = typeof value.size === 'string' ? Number(value.size) : value.size;
-  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
+  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && imagePathOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
 }
 
 function validProfile(value: unknown): value is UserProfile {
@@ -94,14 +95,14 @@ export function normalizeDocument(value: unknown): KeeperDocument | null {
 
   // Coerce preferences.size from string to number if needed.
   const rawPreferences = record(value.preferences)
-    ? { ...value.preferences, size: normalizeFontSize(value.preferences.size) }
+    ? { ...value.preferences, image: typeof value.preferences.image === 'string' && /^https:\/\//i.test(value.preferences.image) && value.preferences.image.length <= 2048 ? value.preferences.image : '', size: normalizeFontSize(value.preferences.size) }
     : value.preferences;
 
   const rawCheckpoints = Array.isArray(value.checkpoints)
     ? value.checkpoints.map((checkpoint: unknown) => {
         if (!record(checkpoint)) return checkpoint;
         const checkpointPreferences = record(checkpoint.preferences)
-          ? { ...checkpoint.preferences, size: normalizeFontSize(checkpoint.preferences.size) }
+          ? { ...checkpoint.preferences, image: typeof checkpoint.preferences.image === 'string' && /^https:\/\//i.test(checkpoint.preferences.image) && checkpoint.preferences.image.length <= 2048 ? checkpoint.preferences.image : '', size: normalizeFontSize(checkpoint.preferences.size) }
           : checkpoint.preferences;
         const checkpointCollections = Array.isArray(checkpoint.collections)
           ? checkpoint.collections.map((collection: unknown) => {

@@ -63,7 +63,7 @@ function App() {
   const [appearancePreview, setAppearancePreview] = useState<Preferences | null>(null);
   const displayedPreferences = appearancePreview ?? preferences;
   const [profile, setProfile] = useState<UserProfile>(() => { try { const value: unknown = JSON.parse(localStorage.getItem('keeper-profile') || '{}'); return value && typeof value === 'object' && typeof (value as UserProfile).name === 'string' && (value as UserProfile).name.length <= 200 ? { ...(value as UserProfile), name: (value as UserProfile).name, email: (value as UserProfile).email ?? '' } : { name: defaultDisplayName, email: '' }; } catch { return { name: defaultDisplayName, email: '' }; } });
-  const [avatarUrl, setAvatarUrl] = useState<string>();
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string>();
   const [settingsSection, setSettingsSection] = useState<'appearance' | 'collections' | 'profile' | 'data'>('appearance');
   const [settingsCollectionId, setSettingsCollectionId] = useState<string | undefined>();
   const [draggedSite, setDraggedSite] = useState<Site | null>(null);
@@ -123,65 +123,17 @@ function App() {
   const documentSnapshot = useCallback(() => ({ collections, preferences, profile, widgets, checkpoints, searchPosition }), [collections, preferences, profile, widgets, checkpoints, searchPosition]);
   useEffect(() => {
     let active = true;
-    if (session?.user.id && profile.avatarPath && supabase) {
-      void supabase.storage.from('profile-pictures').createSignedUrl(profile.avatarPath, 3600).then(({ data }) => { if (active) setAvatarUrl(data?.signedUrl); });
-    } else setAvatarUrl(undefined);
-    return () => { active = false; };
-  }, [session?.user.id, profile.avatarPath]);
-  const uploadAvatar = async (file: File) => {
-    if (!session?.user.id || !supabase) return;
-    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5_000_000) { notify('Choose a PNG, JPEG, or WebP image under 5 MB', 'warning'); return; }
-    const path = `${session.user.id}/avatar.${file.type === 'image/jpeg' ? 'jpg' : file.type.split('/')[1]}`;
-    const { error } = await supabase.storage.from('profile-pictures').upload(path, file, { upsert: true, contentType: file.type });
-    if (error) { notify('Could not upload profile picture', 'error'); return; }
-    setProfile(current => ({ ...current, avatarPath: path }));
-    const { data } = await supabase.storage.from('profile-pictures').createSignedUrl(path, 3600);
-    setAvatarUrl(data?.signedUrl);
-    notify('Profile picture saved', 'success');
-  };
-  const removeAvatar = async () => {
-    if (!session?.user.id || !supabase || !profile.avatarPath) return;
-    const path = profile.avatarPath;
-    const { error } = await supabase.storage.from('profile-pictures').remove([path]);
-    if (error) { notify('Could not remove profile picture', 'error'); return; }
-    setProfile(current => ({ ...current, avatarPath: undefined }));
-    setAvatarUrl(undefined);
-    dirtyDocument.current = true;
-    window.clearTimeout(syncTimer.current);
-    try {
-      let remote = await readRemoteDocument(session.user.id);
-      let nextDocument = { ...(remote?.document ?? documentSnapshot()), profile: { ...(remote?.document.profile ?? profile), avatarPath: undefined } };
-      let revision = remote?.revision ?? null;
-      try {
-        remoteRevision.current = (await writeRemoteDocument(session.user.id, nextDocument, revision)) ?? null;
-      } catch {
-        remote = await readRemoteDocument(session.user.id);
-        if (!remote) throw new Error('Could not read the latest profile');
-        nextDocument = { ...remote.document, profile: { ...remote.document.profile, avatarPath: undefined } };
-        remoteRevision.current = (await writeRemoteDocument(session.user.id, nextDocument, remote.revision)) ?? null;
-      }
-      lastSyncedSnapshot.current = JSON.stringify(nextDocument);
-      dirtyDocument.current = false;
-      setSyncState('synced');
-      if (JSON.stringify(documentSnapshot()) !== lastSyncedSnapshot.current) {
-        window.clearTimeout(syncTimer.current);
-        syncTimer.current = window.setTimeout(async () => {
-          try {
-            const snapshot = JSON.stringify(documentSnapshot());
-            remoteRevision.current = (await writeRemoteDocument(session.user.id, JSON.parse(snapshot), remoteRevision.current)) ?? null;
-            lastSyncedSnapshot.current = snapshot;
-            setSyncState('synced');
-          } catch { setSyncState('error'); }
-          finally { dirtyDocument.current = false; }
-        }, 500);
-      }
-    } catch {
-      setSyncState('error');
-      notify('Profile picture removed here, but could not sync the change. Please retry when connected.', 'error');
-      return;
-    }
-    notify('Profile picture removed', 'success');
-  };
+    const path = displayedPreferences.imagePath;
+    const refresh = async () => {
+      if (!session?.user.id || !supabase || !path) { setBackgroundImageUrl(undefined); return; }
+      const { data, error } = await supabase.storage.from('background-images').createSignedUrl(path, 3600);
+      if (active) setBackgroundImageUrl(error ? undefined : data?.signedUrl);
+    };
+    void refresh();
+    if (!path || !session?.user.id) return () => { active = false; };
+    const timer = window.setInterval(() => { void refresh(); }, 50 * 60 * 1000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session?.user.id, displayedPreferences.imagePath]);
   useEffect(() => {
     if (!session?.user.id) { dirtyDocument.current = false; setDocumentReady(true); setSyncState('local'); return; }
     let active = true;
@@ -342,11 +294,11 @@ function App() {
     const fontScale = displayedPreferences.size / 16;
     root.style.setProperty('--font-scale', String(fontScale));
     for (const [token, base] of [['--text-xs', 12], ['--text-sm', 14], ['--text-md', 16], ['--text-lg', 20], ['--text-xl', 28]] as const) root.style.setProperty(token, `${base * fontScale}px`);
-    const validImage = (() => { try { const url = new URL(displayedPreferences.image); return ['https:', 'http:'].includes(url.protocol) ? url.href : displayedPreferences.image.startsWith('data:image/') ? displayedPreferences.image : ''; } catch { return displayedPreferences.image.startsWith('data:image/') ? displayedPreferences.image : ''; } })();
+    const validImage = displayedPreferences.imagePath ? backgroundImageUrl ?? '' : (() => { try { const url = new URL(displayedPreferences.image); return ['https:', 'http:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } })();
     const background = displayedPreferences.background === 'gradient' ? `linear-gradient(135deg, ${displayedPreferences.color1}, ${displayedPreferences.color2})` : displayedPreferences.background === 'image' && validImage ? `linear-gradient(rgba(8,9,11,.4), rgba(8,9,11,.52)), url("${validImage}")` : `linear-gradient(${displayedPreferences.color1}, ${displayedPreferences.color1})`;
     root.style.setProperty('--canvas-background', background);
     try { localStorage.setItem('keeper-preferences', JSON.stringify(preferences)); } catch { /* Keep the current appearance for this session if storage is full. */ }
-  }, [preferences, displayedPreferences]);
+  }, [preferences, displayedPreferences, backgroundImageUrl]);
   useEffect(() => { const close = () => { setMenu(null); setWidgetPickerOpen(false); }; window.addEventListener('click', close); return () => window.removeEventListener('click', close); }, []);
   useEffect(() => { const timer = window.setInterval(() => setToasts(items => items.filter(toast => toast.id > Date.now() - 4000)), 500); return () => window.clearInterval(timer); }, []);
   useEffect(() => { const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { setQueryOpen(false); setModal(null); setMenu(null); setConfirmDelete(null); setHelpOpen(false); setWidgetPickerOpen(false); } }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
@@ -419,13 +371,18 @@ function App() {
           const { error } = await supabase.storage.from('profile-pictures').remove([avatarPath]);
           if (error) throw error;
         }
+        const backgroundPath = remote?.document.preferences.imagePath ?? preferences.imagePath;
+        if (backgroundPath) {
+          const { error } = await supabase.storage.from('background-images').remove([backgroundPath]);
+          if (error) throw error;
+        }
         remoteRevision.current = await clearRemoteKeeperData(session.user.id, preservedCheckpoints);
       }
       localStorage.setItem('keeper-checkpoints', JSON.stringify(preservedCheckpoints));
       for (const key of ['keeper-data', 'keeper-preferences', 'keeper-profile', 'keeper-widgets', 'keeper-search-position', 'keeper-welcome-seen']) localStorage.removeItem(key);
       window.location.reload();
     } catch {
-      notify('Could not complete deletion. Local data was kept; please retry when connected. A cloud profile picture may already have been removed.', 'error');
+      notify('Could not complete deletion. Local data was kept; please retry when connected. A cloud image may already have been removed.', 'error');
     }
   };
   const addWidget = (type: DashboardWidget['type']) => { const width = type === 'calendar' ? 228 : 180; const height = type === 'calendar' ? 230 : 130; const areaWidth = document.querySelector('.dashboard-widgets')?.clientWidth ?? window.innerWidth * .898; const columns = Math.max(1, Math.floor(areaWidth / 250)); const index = widgets.length; setWidgets(items => [...items, { id: createId(), type, width, height, x: index % columns * 250, y: Math.floor(index / columns) * 245 }]); setWidgetPickerOpen(false); notify(`${type === 'clock' ? 'Clock' : 'Calendar'} widget added`, 'success'); };
@@ -518,7 +475,7 @@ function App() {
     {modal && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && (appearancePreview && modal === 'settings' ? (setAppearancePreview(null), setModal(null)) : setModal(null))}><div className={`modal ${modal === 'settings' ? 'settings-modal' : ''}`}><button className="modal-close" onClick={() => { if (modal === 'settings') setAppearancePreview(null); setModal(null); }} aria-label="Close"><X size={17}/></button>
       {modal === 'collection' && <><span className="modal-icon"><FolderPlus size={20}/></span><div className="modal-eyebrow">{editingCollection ? 'UPDATE COLLECTION' : 'A NEW LITTLE CORNER'}</div><h2>{editingCollection ? 'Rename collection' : 'Create a collection'}</h2><p>{editingCollection ? 'Choose a name that feels right.' : 'Give your favorite places a place of their own.'}</p><label className="field-label">COLLECTION NAME</label><input className="field" autoFocus placeholder="e.g. Weekend reading" value={newCollection} onChange={e => setNewCollection(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveCollection()}/><label className="field-label">COLLECTION COLOR</label><ColorPicker label="Collection color" value={newCollectionColor} fallbackColor={preferences.accent} allowNone onChange={setNewCollectionColor}/><div className="modal-actions"><button className="cancel-button" onClick={() => { setEditingCollection(null); setModal(null); }}>Cancel</button><button className="primary-button" onClick={saveCollection}>{editingCollection ? 'Save changes' : 'Create collection'} <ArrowUpRight size={15}/></button></div></>}
       {modal === 'site' && <><span className="modal-icon"><Link2 size={20}/></span><div className="modal-eyebrow">{editing ? 'TIDY UP YOUR COLLECTION' : `ADD TO ${current?.name.toUpperCase()}`}</div><h2>{editing ? 'Edit website' : 'Save a website'}</h2><p>A shortcut to somewhere you love.</p><label className="field-label">DISPLAY NAME</label><input className="field" autoFocus placeholder="e.g. Are.na" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><label className="field-label">WEBSITE ADDRESS</label><input className="field" placeholder="e.g. are.na" value={newUrl} onChange={e => setNewUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><div className="modal-actions"><button className="cancel-button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" onClick={saveSite}>{editing ? 'Save changes' : 'Save website'} <ArrowUpRight size={15}/></button></div></>}
-      {modal === 'settings' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onAppearancePreview={setAppearancePreview} collections={collections} onCollectionsUpdate={updates => setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })))} onNotify={notify} initialSection={settingsSection} initialCollectionId={settingsCollectionId} profile={profile} setProfile={setProfile} onImport={importBackup} onWipeLocalData={wipeAllKeeperData} widgets={widgets} searchPosition={searchPosition} checkpoints={checkpoints} onCheckpointsChange={setCheckpoints} userEmail={session?.user.email ?? ''} syncState={syncState} avatarUrl={avatarUrl} onAvatarUpload={uploadAvatar} onAvatarRemove={removeAvatar} onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }} onSignIn={() => { setModal(null); setAuthModalOpen(true); }}/ >}
+      {modal === 'settings' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onAppearancePreview={setAppearancePreview} collections={collections} onCollectionsUpdate={updates => setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })))} onNotify={notify} initialSection={settingsSection} initialCollectionId={settingsCollectionId} profile={profile} setProfile={setProfile} onImport={importBackup} onWipeLocalData={wipeAllKeeperData} widgets={widgets} searchPosition={searchPosition} checkpoints={checkpoints} onCheckpointsChange={setCheckpoints} userEmail={session?.user.email ?? ''} syncState={syncState} onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }} onSignIn={() => { setModal(null); setAuthModalOpen(true); }}/ >}
 
     </div></div>}
     {onboardingOpen && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && dismissOnboarding()}><section className="modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><button className="modal-close" onClick={dismissOnboarding} aria-label="Close"><X size={17}/></button><div className="modal-eyebrow">WELCOME TO KEEPER</div><h2 id="onboarding-title">Your favorite places, all in one spot.</h2><p>Make a personal dashboard for the websites you visit most.</p><ul className="onboarding-features"><li><FolderPlus size={17}/><span><strong>Collections</strong>Group websites by work, interests, or anything you like.</span></li><li><Link2 size={17}/><span><strong>Website shortcuts</strong>Save a name and address, then open it from your collection.</span></li><li><Search size={17}/><span><strong>Quick search</strong>Find saved websites or search the web from the home screen.</span></li><li><Settings size={17}/><span><strong>Make it yours</strong>Adjust the look, add clock or calendar widgets, and back up your data in settings.</span></li></ul><div className="modal-actions"><button className="primary-button" onClick={dismissOnboarding}>Get started <ArrowUpRight size={15}/></button></div></section></div>}
