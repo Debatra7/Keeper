@@ -11,6 +11,7 @@ export type KeeperDocument = {
   widgets: DashboardWidget[];
   checkpoints: DataBackup[];
   searchPosition: { x: number; y: number };
+  wallpaperUrls?: string[];
 };
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
@@ -55,7 +56,7 @@ function validPreferences(value: unknown): value is Preferences {
   const imagePathOk = value.imagePath === undefined || value.imagePath === '' || typeof value.imagePath === 'string' && value.imagePath.length <= 300 && !value.imagePath.startsWith('/') && !value.imagePath.includes('..');
   // Accept numeric strings for size (database returns text columns as strings).
   const sizeNum = typeof value.size === 'string' ? Number(value.size) : value.size;
-  const wallpaperUrlsOk = Array.isArray(value.wallpaperUrls) && value.wallpaperUrls.length <= 25 && value.wallpaperUrls.every(url => typeof url === 'string' && url.length <= 2048 && /^https:\/\//i.test(url));
+  const wallpaperUrlsOk = value.wallpaperUrls === undefined || Array.isArray(value.wallpaperUrls) && value.wallpaperUrls.length <= 25 && value.wallpaperUrls.every(url => typeof url === 'string' && url.length <= 2048 && /^https:\/\//i.test(url));
   return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && imagePathOk && wallpaperUrlsOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
 }
 
