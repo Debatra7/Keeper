@@ -18,10 +18,12 @@ const text = (value: unknown, max: number) => typeof value === 'string' && value
 const color = (value: unknown) => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 const validFont = (value: unknown) => value === undefined || value === null || FONT_OPTIONS.includes(value as typeof FONT_OPTIONS[number]);
 const normalizeFontSize = (value: unknown): FontSize => {
-  if (FONT_SIZES.some(option => option.value === value)) return value as FontSize;
+  // Accept numeric strings returned by the database (SQL ->> returns text).
+  const coerced = typeof value === 'string' ? Number(value) : value;
+  if (FONT_SIZES.some(option => option.value === coerced)) return coerced as FontSize;
   if (value === 'small') return 14;
   if (value === 'large') return 20;
-  if (typeof value === 'number' && value >= 10 && value <= 24) return FONT_SIZES.reduce((closest, option) => Math.abs(option.value - value) < Math.abs(closest - value) ? option.value : closest, 16 as FontSize);
+  if (typeof coerced === 'number' && coerced >= 10 && coerced <= 24) return FONT_SIZES.reduce((closest, option) => Math.abs(option.value - coerced) < Math.abs(closest - coerced) ? option.value : closest, 16 as FontSize);
   return 16;
 };
 
@@ -37,24 +39,30 @@ function validSite(value: unknown): value is Site {
   return record(value) && text(value.id, 100) && text(value.name, 200) && safeWebsiteUrl(value.url) !== null;
 }
 
+function validFontSize(value: unknown): boolean {
+  // Accept both numeric values and numeric strings (from DB text columns).
+  const coerced = typeof value === 'string' ? Number(value) : value;
+  return value === undefined || value === null || [14, 16, 20, 24].includes(coerced as number);
+}
+
 function validCollection(value: unknown): value is Collection {
   return record(value) && text(value.id, 100) && text(value.name, 200) && (value.color === '' || color(value.color)) && validFont(value.font) && validFont(value.nameFont) && validFont(value.cardFont) && validFontSize(value.titleFontSize) && validFontSize(value.cardFontSize) && Array.isArray(value.sites) && value.sites.length <= 500 && value.sites.every(validSite);
 }
 
-function validFontSize(value: unknown): boolean { return value === undefined || value === null || [14, 16, 20, 24].includes(value as number); }
-
 function validPreferences(value: unknown): value is Preferences {
   if (!record(value)) return false;
   const imageOk = value.image === '' || typeof value.image === 'string' && value.image.length <= 2_100_000 && (/^https:\/\//i.test(value.image) || /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z\d+/]+=*$/i.test(value.image));
-  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && FONT_SIZES.some(size => size.value === value.size);
+  // Accept numeric strings for size (database returns text columns as strings).
+  const sizeNum = typeof value.size === 'string' ? Number(value.size) : value.size;
+  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
 }
 
 function validProfile(value: unknown): value is UserProfile {
-  return record(value) && text(value.name, 200) && (value.email === undefined || text(value.email, 254)) && (value.hideEmail === undefined || typeof value.hideEmail === 'boolean') && (value.avatarPath === undefined || typeof value.avatarPath === 'string' && text(value.avatarPath, 300) && !value.avatarPath.startsWith('/') && !value.avatarPath.includes('..'));
+  return record(value) && text(value.name, 200) && (value.email === undefined || text(value.email, 254)) && (value.hideEmail === undefined || typeof value.hideEmail === 'boolean') && (value.avatarPath === undefined || value.avatarPath === null || typeof value.avatarPath === 'string' && text(value.avatarPath, 300) && !value.avatarPath.startsWith('/') && !value.avatarPath.includes('..'));
 }
 
 function validWidget(value: unknown): value is DashboardWidget {
-  return record(value) && text(value.id, 100) && ['clock', 'calendar'].includes(String(value.type)) && ['x', 'y', 'width', 'height'].every(key => value[key] === undefined || typeof value[key] === 'number' && Number.isFinite(value[key]) && Math.abs(value[key]) <= 5000);
+  return record(value) && text(value.id, 100) && ['clock', 'calendar'].includes(String(value.type)) && ['x', 'y', 'width', 'height'].every(key => value[key] === undefined || typeof value[key] === 'number' && Number.isFinite(value[key]) && Math.abs(value[key] as number) <= 5000);
 }
 
 export function isBackup(value: unknown): value is DataBackup {
@@ -68,16 +76,66 @@ export function isKeeperDocument(value: unknown): value is KeeperDocument {
 }
 
 export function normalizeDocument(value: unknown): KeeperDocument | null {
-  if (!record(value) || !Array.isArray(value.collections) || !value.collections.every(validCollection)) return null;
+  if (!record(value)) return null;
+
+  // Coerce font size fields that may arrive as strings from the database (SQL ->> operator returns text).
+  const rawCollections = Array.isArray(value.collections)
+    ? value.collections.map((col: unknown) => {
+        if (!record(col)) return col;
+        return {
+          ...col,
+          titleFontSize: col.titleFontSize == null ? undefined : normalizeFontSize(col.titleFontSize),
+          cardFontSize:  col.cardFontSize  == null ? undefined : normalizeFontSize(col.cardFontSize),
+        };
+      })
+    : value.collections;
+
+  if (!Array.isArray(rawCollections) || !rawCollections.every(validCollection)) return null;
+
+  // Coerce preferences.size from string to number if needed.
+  const rawPreferences = record(value.preferences)
+    ? { ...value.preferences, size: normalizeFontSize(value.preferences.size) }
+    : value.preferences;
+
+  const rawCheckpoints = Array.isArray(value.checkpoints)
+    ? value.checkpoints.map((checkpoint: unknown) => {
+        if (!record(checkpoint)) return checkpoint;
+        const checkpointPreferences = record(checkpoint.preferences)
+          ? { ...checkpoint.preferences, size: normalizeFontSize(checkpoint.preferences.size) }
+          : checkpoint.preferences;
+        const checkpointCollections = Array.isArray(checkpoint.collections)
+          ? checkpoint.collections.map((collection: unknown) => {
+              if (!record(collection)) return collection;
+              return {
+                ...collection,
+                titleFontSize: collection.titleFontSize == null ? undefined : normalizeFontSize(collection.titleFontSize),
+                cardFontSize: collection.cardFontSize == null ? undefined : normalizeFontSize(collection.cardFontSize),
+              };
+            })
+          : checkpoint.collections;
+        const checkpointProfile = record(checkpoint.profile) && checkpoint.profile.avatarPath === null
+          ? { ...checkpoint.profile, avatarPath: undefined }
+          : checkpoint.profile;
+        return { ...checkpoint, preferences: checkpointPreferences, collections: checkpointCollections, profile: checkpointProfile };
+      })
+    : value.checkpoints;
+
   const position = record(value.searchPosition) ? value.searchPosition : {};
   const document = {
-    collections: value.collections.map(collection => ({ ...collection, titleFontSize: collection.titleFontSize == null ? undefined : normalizeFontSize(collection.titleFontSize), cardFontSize: collection.cardFontSize == null ? undefined : normalizeFontSize(collection.cardFontSize), sites: collection.sites.map(site => ({ ...site, url: safeWebsiteUrl(site.url)! })) })),
-    preferences: record(value.preferences) ? { ...value.preferences, size: normalizeFontSize(value.preferences.size) } : value.preferences,
-    profile: value.profile,
+    collections: rawCollections.map(collection => ({
+      ...collection,
+      sites: collection.sites.map((site: Site) => ({ ...site, url: safeWebsiteUrl(site.url)! })),
+    })),
+    preferences: rawPreferences,
+    profile: record(value.profile) && value.profile.avatarPath === null
+      ? { ...value.profile, avatarPath: undefined }
+      : value.profile,
     widgets: value.widgets ?? [],
-    checkpoints: value.checkpoints ?? [],
-    searchPosition: { x: typeof position.x === 'number' && Number.isFinite(position.x) && Math.abs(position.x) <= 5000 ? position.x : 0, y: typeof position.y === 'number' && Number.isFinite(position.y) && Math.abs(position.y) <= 5000 ? position.y : 0 },
+    checkpoints: rawCheckpoints ?? [],
+    searchPosition: {
+      x: typeof position.x === 'number' && Number.isFinite(position.x) && Math.abs(position.x) <= 5000 ? position.x : 0,
+      y: typeof position.y === 'number' && Number.isFinite(position.y) && Math.abs(position.y) <= 5000 ? position.y : 0,
+    },
   };
   return isKeeperDocument(document) ? document : null;
 }
-
