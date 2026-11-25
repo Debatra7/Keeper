@@ -120,6 +120,9 @@ body{background:var(--canvas-background,radial-gradient(ellipse at 50% 38%,#1719
 .wallpaper-gallery::-webkit-scrollbar-thumb:hover{background:var(--accent);background-clip:padding-box}
 .wallpaper-tile{position:relative;width:96px;height:62px;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--surface-soft)}
 .wallpaper-tile.selected{outline:2px solid var(--accent);outline-offset:2px}
+.wallpaper-refresh{display:grid;place-items:center;color:var(--muted);cursor:pointer}
+.wallpaper-refresh:hover:not(:disabled){border-color:var(--accent);color:var(--text)}
+.wallpaper-refresh:disabled{opacity:.45;cursor:not-allowed}
 .wallpaper-select{width:100%;height:100%;padding:0;border:0;background:transparent;cursor:pointer}
 .wallpaper-select img{display:block;width:100%;height:100%;object-fit:cover}
 .wallpaper-delete{position:absolute;top:4px;right:4px;width:22px;height:22px;display:grid;place-items:center;padding:0;border:0;border-radius:5px;background:rgba(0,0,0,.75);color:#fff;cursor:pointer}
