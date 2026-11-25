@@ -1,5 +1,5 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
-import { Check, Database, Download, Eye, EyeOff, FileUp, Folder, LogIn, Palette, RotateCcw, Settings, Trash2 } from 'lucide-react';
+import { AlertCircle, Check, Database, Download, Eye, EyeOff, FileUp, Folder, Info, LogIn, Palette, PauseCircle, RotateCcw, Settings, Trash2 } from 'lucide-react';
 import type { Collection } from '../collections/types';
 import { ColorPicker } from '../../components/ColorPicker';
 import { FontSelector } from '../../components/FontSelector';
@@ -9,11 +9,12 @@ import type { DashboardWidget } from '../dashboard/DashboardWidgets';
 import { defaultPreferences } from './preferences';
 import { FONT_OPTIONS } from './preferences';
 import { isBackup } from '../../lib/validation';
+import { syncEngine, type SyncEngineState } from '../../lib/sync';
 
 export type UserProfile = { name: string; email?: string; hideEmail?: boolean; avatarPath?: string };
 export type DataBackup = { version: 1; exportedAt: string; collections: Collection[]; preferences: Preferences; profile: UserProfile; widgets?: DashboardWidget[]; searchPosition?: { x: number; y: number } };
 
-export function SettingsPanel({ preferences, setPreferences, onAppearancePreview, collections, onCollectionsUpdate, onNotify, initialSection, initialCollectionId, profile, setProfile, onImport, onWipeLocalData, widgets, searchPosition, checkpoints, onCheckpointsChange, userEmail, syncState, onSignOut, onSignIn }: {
+export function SettingsPanel({ preferences, setPreferences, onAppearancePreview, collections, onCollectionsUpdate, onNotify, initialSection, initialCollectionId, profile, setProfile, onImport, onWipeLocalData, widgets, searchPosition, checkpoints, onCheckpointsChange, userEmail, syncState: _syncState, onSignOut, onSignIn }: {
   preferences: Preferences;
   setPreferences: Dispatch<SetStateAction<Preferences>>;
   onAppearancePreview: (preferences: Preferences | null) => void;
@@ -33,7 +34,7 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   userEmail: string;
   onSignOut: () => void;
   onSignIn: () => void;
-  syncState: 'local' | 'syncing' | 'synced' | 'error';
+  syncState: 'local' | 'syncing' | 'synced' | 'offline' | 'paused' | 'error';
 }) {
   const [section, setSection] = useState<'appearance' | 'collections' | 'profile' | 'data'>(initialSection);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -42,6 +43,8 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   const [preview, setPreview] = useState<DataBackup | null>(null);
   const [confirmRestore, setConfirmRestore] = useState<DataBackup | null>(null);
   const [confirmDeleteCheckpoint, setConfirmDeleteCheckpoint] = useState<DataBackup | null>(null);
+  const [engineState, setEngineState] = useState<SyncEngineState>(() => syncEngine.getState());
+  useEffect(() => syncEngine.subscribe(setEngineState), []);
   const [wallpaperUrls, setWallpaperUrls] = useState<string[]>(() => {
     try {
       const saved: unknown = JSON.parse(localStorage.getItem('keeper-wallpaper-urls') || '[]');
@@ -136,7 +139,97 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
             <div className="collection-setting-label"><span>Collection title size</span><small className="settings-help">Controls this collection’s name in the top navigation.</small><FontSizeSelector label="Collection title size" value={selectedStyle!.titleFontSize ?? draftPreferences.size} onChange={(titleFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], titleFontSize } }))}/></div><div className="collection-setting-label"><span>Website card font</span><small className="settings-help">Controls text on cards in this collection.</small><FontSelector value={selectedStyle!.cardFont ?? selectedStyle!.font ?? draftPreferences.font} options={FONT_OPTIONS} onChange={font => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: font } }))}/><button type="button" className="text-button" onClick={() => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: null } }))}>Use global font</button><FontSizeSelector label="Website card text size" value={selectedStyle!.cardFontSize ?? draftPreferences.size} onChange={(cardFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFontSize } }))}/></div>
           </>}
         </> : <p className="collection-settings-empty">Create a collection first to set its color and font.</p>}
-      </div></div> : section === 'profile' ? <div className="settings-content"><div className="settings-section profile-settings"><label className="collection-setting-label">Display name<input className="field settings-input" autoComplete="name" placeholder="Your name" value={draftProfile.name} onChange={e => setDraftProfile(value => ({ ...value, name: e.target.value }))}/></label><div className="profile-auth"><div><strong>{userEmail ? maskEmail(userEmail) : 'Optional account'}</strong><small>{userEmail ? 'Signed in with Keeper account' : 'Sign in to use your account across devices.'}</small></div>{userEmail && <button type="button" className="quiet-button email-mask-toggle" onClick={() => setDraftProfile(value => ({ ...value, hideEmail: !value.hideEmail }))} aria-label={draftProfile.hideEmail ? 'Show email address' : 'Hide email address'} aria-pressed={!!draftProfile.hideEmail} title={draftProfile.hideEmail ? 'Show email address' : 'Hide email address'}>{draftProfile.hideEmail ? <Eye size={15}/> : <EyeOff size={15}/>}</button>}{userEmail ? <button type="button" className="primary-button profile-auth-button" onClick={onSignOut}>Sign out</button> : <button type="button" className="primary-button profile-auth-button" onClick={onSignIn}><LogIn size={15}/> Sign in / Sign up</button>}</div><small className="settings-help">Your display name and app data are saved in this browser.</small></div></div> : <div className="settings-content"><div className="settings-section data-settings"><div className="data-sync-card"><span className="data-sync-email">{userEmail ? maskEmail(userEmail) : 'Not linked'}</span><span className={`data-sync-state ${syncState}`} role="status"><i/> {syncState === 'syncing' ? 'Syncing' : syncState === 'synced' ? 'Up to date' : syncState === 'error' ? 'Sync issue' : 'Local only'}</span></div><div className="checkpoint-heading"><div><div className="settings-title">CHECKPOINTS</div><p>Save and restore snapshots of your collections and settings.</p></div><span className="checkpoint-count">{checkpoints.length} / 5</span></div><div className="data-actions"><button className="primary-button" onClick={createCheckpoint} disabled={checkpoints.length >= 5}><Database size={15}/> {checkpoints.length >= 5 ? 'Checkpoint limit reached' : 'Create checkpoint'}</button></div>{checkpoints.length > 0 ? <ul className="checkpoint-list">{checkpoints.map(checkpoint => <li key={checkpoint.exportedAt}><time dateTime={checkpoint.exportedAt}>{new Date(checkpoint.exportedAt).toLocaleString()}</time><div><button className="text-button" onClick={() => setPreview(checkpoint)}><Eye size={14}/> Preview</button><button className="text-button" onClick={() => setPreview(checkpoint)}><RotateCcw size={14}/> Restore</button><button className="text-button danger-text" aria-label="Delete checkpoint" onClick={() => setConfirmDeleteCheckpoint(checkpoint)}><Trash2 size={14}/></button></div></li>)}</ul> : <p className="checkpoint-empty">No checkpoints yet. Create one to keep a restore point.</p>}<div className="settings-title checkpoint-title">BACKUP FILE</div><p>Export your data or restore a Keeper JSON backup.</p><div className="data-size">Approximate backup size <strong>{(new Blob([JSON.stringify(createBackup())]).size / 1024).toFixed(1)} KB</strong></div><div className="data-actions"><button className="primary-button" onClick={exportData}><Download size={15}/> Export backup</button><label className="upload-button"><FileUp size={15}/> Import backup<input type="file" accept="application/json,.json" onChange={e => { void importData(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label></div><small className="settings-help">Importing replaces your current collections, appearance, and profile. Only Keeper JSON backups are accepted (up to 10 MB).</small><div className="local-wipe-section"><div className="settings-title">DELETE ALL DATA</div><p>This permanently removes Keeper data from this browser and your account.</p><button className="confirm-delete-button" onClick={() => setConfirmWipeLocal(true)}><Trash2 size={15}/> Delete all data</button></div></div></div>}
+      </div></div> : section === 'profile' ? <div className="settings-content"><div className="settings-section profile-settings"><label className="collection-setting-label">Display name<input className="field settings-input" autoComplete="name" placeholder="Your name" value={draftProfile.name} onChange={e => setDraftProfile(value => ({ ...value, name: e.target.value }))}/></label><div className="profile-auth"><div><strong>{userEmail ? maskEmail(userEmail) : 'Optional account'}</strong><small>{userEmail ? 'Signed in with Keeper account' : 'Sign in to use your account across devices.'}</small></div>{userEmail && <button type="button" className="quiet-button email-mask-toggle" onClick={() => setDraftProfile(value => ({ ...value, hideEmail: !value.hideEmail }))} aria-label={draftProfile.hideEmail ? 'Show email address' : 'Hide email address'} aria-pressed={!!draftProfile.hideEmail} title={draftProfile.hideEmail ? 'Show email address' : 'Hide email address'}>{draftProfile.hideEmail ? <Eye size={15}/> : <EyeOff size={15}/>}</button>}{userEmail ? <button type="button" className="primary-button profile-auth-button" onClick={onSignOut}>Sign out</button> : <button type="button" className="primary-button profile-auth-button" onClick={onSignIn}><LogIn size={15}/> Sign in / Sign up</button>}</div><small className="settings-help">Your display name and app data are saved in this browser.</small></div></div> : <div className="settings-content"><div className="settings-section data-settings">
+        {/* Cloud Backup On/Off Feature Toggle */}
+        <div className="settings-title">CLOUD BACKUP & MULTI-DEVICE SYNC</div>
+        <div className="sync-backup-toggle-row data-backup-toggle">
+          <div>
+            <strong>Enable Cloud Backup</strong>
+            <small className="settings-help">Synchronizes your bookmarks, widgets, and appearance settings incrementally across all signed-in devices. Turn off to keep edits exclusively local to this browser.</small>
+          </div>
+          <label className="switch-toggle" aria-label="Toggle cloud backup">
+            <input
+              type="checkbox"
+              checked={engineState.cloudBackupEnabled}
+              onChange={e => syncEngine.setCloudBackupEnabled(e.target.checked)}
+            />
+            <span className="switch-slider" />
+          </label>
+        </div>
+        {!engineState.cloudBackupEnabled && (
+          <div className="sync-offline-banner">
+            <PauseCircle size={15} />
+            <span>Cloud backup is turned off. Your collections, websites, and settings are saved strictly on this device.</span>
+          </div>
+        )}
+
+        {/* Sync Status & Problem Diagnostics */}
+        <div className="settings-title" style={{ marginTop: 20 }}>SYNC HEALTH & DIAGNOSTICS</div>
+        <div className="data-sync-card">
+          <span className="data-sync-email">{userEmail ? maskEmail(userEmail) : 'Not linked to cloud account'}</span>
+          <span className={`data-sync-state ${!engineState.cloudBackupEnabled ? 'offline' : engineState.status}`} role="status">
+            <i/> {!engineState.cloudBackupEnabled ? 'Cloud paused' : engineState.status === 'syncing' ? 'Syncing' : engineState.status === 'synced' ? 'Up to date' : engineState.status === 'offline' ? 'Offline' : 'Sync issue'}
+          </span>
+        </div>
+
+        {/* Detailed problem information */}
+        {engineState.cloudBackupEnabled && (engineState.status === 'error' || engineState.status === 'offline') && (
+          <div className={`sync-issue-card ${engineState.status}`}>
+            <div className="sync-issue-header">
+              <AlertCircle size={16} className="sync-issue-icon" />
+              <strong>{engineState.errorDetails?.title || (engineState.status === 'offline' ? 'Device is offline' : 'Sync encountered an issue')}</strong>
+            </div>
+            <p className="sync-issue-message">
+              {engineState.errorDetails?.message || 'Unable to connect to the cloud service to push pending mutations.'}
+            </p>
+            <div className="sync-issue-suggestion">
+              <Info size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>{engineState.errorDetails?.suggestion || 'Check your internet connection or verify your account session in settings.'}</span>
+            </div>
+            {engineState.errorDetails?.code && (
+              <div className="sync-issue-code">
+                <span>Error Code: <code>{engineState.errorDetails.code}</code></span>
+                {engineState.errorDetails.attempt ? (
+                  <span>Retry Attempt: #{engineState.errorDetails.attempt}</span>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Diagnostics stats */}
+        <div className="sync-stats-grid">
+          <div className="sync-stat-item">
+            <span className="sync-stat-label">Connection</span>
+            <strong className="sync-stat-value">{engineState.isOnline ? 'Online' : 'Offline'}</strong>
+          </div>
+          <div className="sync-stat-item">
+            <span className="sync-stat-label">Last Synced</span>
+            <strong className="sync-stat-value">{engineState.lastSyncedAt ? new Date(engineState.lastSyncedAt).toLocaleTimeString() : 'Never'}</strong>
+          </div>
+          <div className="sync-stat-item">
+            <span className="sync-stat-label">Local Outbox</span>
+            <strong className="sync-stat-value">{engineState.pendingCount === 0 ? '0 pending' : `${engineState.pendingCount} queued`}</strong>
+          </div>
+          <div className="sync-stat-item">
+            <span className="sync-stat-label">Device ID</span>
+            <strong className="sync-stat-value" title={engineState.deviceId}>{engineState.deviceId.slice(0, 10)}…</strong>
+          </div>
+        </div>
+
+        <div className="data-actions" style={{ marginTop: 12, marginBottom: 20 }}>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={!engineState.cloudBackupEnabled || engineState.status === 'syncing'}
+            onClick={() => void syncEngine.sync()}
+          >
+            <RotateCcw size={14} className={engineState.status === 'syncing' ? 'spin-icon' : ''} />
+            {engineState.status === 'syncing' ? 'Syncing…' : 'Sync Now'}
+          </button>
+        </div>
+
+        <div className="checkpoint-heading"><div><div className="settings-title">CHECKPOINTS</div><p>Save and restore snapshots of your collections and settings.</p></div><span className="checkpoint-count">{checkpoints.length} / 5</span></div><div className="data-actions"><button className="primary-button" onClick={createCheckpoint} disabled={checkpoints.length >= 5}><Database size={15}/> {checkpoints.length >= 5 ? 'Checkpoint limit reached' : 'Create checkpoint'}</button></div>{checkpoints.length > 0 ? <ul className="checkpoint-list">{checkpoints.map(checkpoint => <li key={checkpoint.exportedAt}><time dateTime={checkpoint.exportedAt}>{new Date(checkpoint.exportedAt).toLocaleString()}</time><div><button className="text-button" onClick={() => setPreview(checkpoint)}><Eye size={14}/> Preview</button><button className="text-button" onClick={() => setPreview(checkpoint)}><RotateCcw size={14}/> Restore</button><button className="text-button danger-text" aria-label="Delete checkpoint" onClick={() => setConfirmDeleteCheckpoint(checkpoint)}><Trash2 size={14}/></button></div></li>)}</ul> : <p className="checkpoint-empty">No checkpoints yet. Create one to keep a restore point.</p>}<div className="settings-title checkpoint-title">BACKUP FILE</div><p>Export your data or restore a Keeper JSON backup.</p><div className="data-size">Approximate backup size <strong>{(new Blob([JSON.stringify(createBackup())]).size / 1024).toFixed(1)} KB</strong></div><div className="data-actions"><button className="primary-button" onClick={exportData}><Download size={15}/> Export backup</button><label className="upload-button"><FileUp size={15}/> Import backup<input type="file" accept="application/json,.json" onChange={e => { void importData(e.target.files?.[0]); e.currentTarget.value = ''; }}/></label></div><small className="settings-help">Importing replaces your current collections, appearance, and profile. Only Keeper JSON backups are accepted (up to 10 MB).</small><div className="local-wipe-section"><div className="settings-title">DELETE ALL DATA</div><p>This permanently removes Keeper data from this browser and your account.</p><button className="confirm-delete-button" onClick={() => setConfirmWipeLocal(true)}><Trash2 size={15}/> Delete all data</button></div></div></div>}
       {isDirty && <div className="settings-actions"><button className="cancel-button" onClick={discardChanges}>Discard changes</button><button className="primary-button" onClick={saveChanges}>Save <Check size={15}/></button></div>}
     </section>
       {confirmReset && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && setConfirmReset(false)}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-description"><span className="confirm-icon"><RotateCcw size={19}/></span><div className="modal-eyebrow">RESET APPEARANCE</div><h2 id="reset-title">Restore default appearance?</h2><p id="reset-description">Your current colors, background, font, and UI size will be replaced with the defaults.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setConfirmReset(false)}>Cancel</button><button className="confirm-delete-button" onClick={() => { setDraftPreferences(defaultPreferences); onAppearancePreview(defaultPreferences); setConfirmReset(false); }}><RotateCcw size={15}/> Reset appearance</button></div></section></div>}

@@ -22,8 +22,10 @@ import type { DashboardWidget } from '../features/dashboard/DashboardWidgets';
 import { getAlignmentTargets, snapToAlignment } from '../features/dashboard/alignment';
 import type { AlignmentGuide } from '../features/dashboard/alignment';
 import { AuthScreen } from '../features/auth/AuthScreen';
-import { clearRemoteKeeperData, readRemoteDocument, supabase, writeRemoteDocument } from '../lib/supabase';
+import { clearRemoteKeeperData, supabase } from '../lib/supabase';
 import { isBackup, normalizeDocument } from '../lib/validation';
+import { SyncStatusBadge } from '../components/SyncStatusBadge';
+import { syncEngine, clearOutbox, resetSyncMetadata } from '../lib/sync';
 
 type Menu = { x: number; y: number; site?: Site; collection?: Collection } | null;
 type Toast = { id: number; message: string; tone: 'success' | 'warning' | 'error' };
@@ -37,14 +39,8 @@ function App() {
   const [collections, setCollections] = useState<Collection[]>(readCollections);
   const [collectionPageIndex, setCollectionPageIndex] = useState(0);
   const [checkpoints, setCheckpoints] = useState<DataBackup[]>(() => { try { const value: unknown = JSON.parse(localStorage.getItem('keeper-checkpoints') || '[]'); return Array.isArray(value) ? value.filter(isBackup).slice(0, 5) : []; } catch { return []; } });
-  const [syncState, setSyncState] = useState<'local' | 'syncing' | 'synced' | 'error'>('local');
-  const [documentReady, setDocumentReady] = useState(false);
-  const dirtyDocument = useRef(false);
-  const lastSyncedSnapshot = useRef<string | null>(null);
-  const remoteRevision = useRef<number | null>(null);
-  const applyingRemoteDocument = useRef(false);
+  const [syncState, setSyncState] = useState<'local' | 'syncing' | 'synced' | 'offline' | 'paused' | 'error'>('local');
   const checkpointSnapshot = useRef(checkpoints);
-  const syncTimer = useRef<number | undefined>(undefined);
   const [active, setActive] = useState<string | null>(null);
   const [modal, setModal] = useState<'collection' | 'site' | 'settings' | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(() => { try { return localStorage.getItem('keeper-welcome-seen') !== 'true'; } catch { return true; } });
@@ -135,113 +131,35 @@ function App() {
     return () => { active = false; window.clearInterval(timer); };
   }, [session?.user.id, displayedPreferences.imagePath]);
   useEffect(() => {
-    if (!session?.user.id) { dirtyDocument.current = false; setDocumentReady(true); setSyncState('local'); return; }
-    let active = true;
-    dirtyDocument.current = false;
-    lastSyncedSnapshot.current = null;
-    setDocumentReady(false);
-    void readRemoteDocument(session.user.id).then(remote => {
-      if (!active) return;
-      remoteRevision.current = remote?.revision ?? null;
-      if (remote && !dirtyDocument.current) {
-        applyingRemoteDocument.current = true;
-        setCollections(remote.document.collections ?? []);
-        setPreferences(remote.document.preferences ?? defaultPreferences);
+    if (!session?.user.id) {
+      setSyncState('local');
+      return;
+    }
+    syncEngine.setSession(
+      session,
+      documentSnapshot,
+      remoteDoc => {
+        setCollections(remoteDoc.collections);
+        setPreferences(remoteDoc.preferences);
         setProfile(current => {
-          const remoteProfile = remote.document.profile ?? { name: defaultDisplayName, email: '' };
+          const remoteProfile = remoteDoc.profile ?? { name: defaultDisplayName, email: '' };
           return current.name.trim().toLowerCase() === defaultDisplayName && remoteProfile.name.trim().toLowerCase() === defaultDisplayName
             ? { ...remoteProfile, name: displayNameFromEmail(session.user.email) }
             : remoteProfile;
         });
-        setWidgets(remote.document.widgets ?? []);
-        setSearchPosition(remote.document.searchPosition ?? { x: 0, y: 0 });
-        searchPositionRef.current = remote.document.searchPosition ?? { x: 0, y: 0 };
-        const serverCheckpoints = remote.document.checkpoints ?? [];
-        const localCheckpoints = checkpointSnapshot.current;
-        const mergedCheckpoints = [...serverCheckpoints];
-        for (const checkpoint of localCheckpoints) if (!mergedCheckpoints.some(item => item.exportedAt === checkpoint.exportedAt)) mergedCheckpoints.push(checkpoint);
-        setCheckpoints(mergedCheckpoints);
-        if (mergedCheckpoints.length !== serverCheckpoints.length) dirtyDocument.current = true;
-      } else if (!remote) dirtyDocument.current = true;
-      else {
-        applyingRemoteDocument.current = true;
-        const serverCheckpoints = remote.document.checkpoints ?? [];
-        const mergedCheckpoints = [...serverCheckpoints];
-        for (const checkpoint of checkpointSnapshot.current) if (!mergedCheckpoints.some(item => item.exportedAt === checkpoint.exportedAt)) mergedCheckpoints.push(checkpoint);
-        setCheckpoints(mergedCheckpoints);
-        if (mergedCheckpoints.length !== serverCheckpoints.length) dirtyDocument.current = true;
+        setWidgets(remoteDoc.widgets);
+        setSearchPosition(remoteDoc.searchPosition);
+        searchPositionRef.current = remoteDoc.searchPosition;
+        setCheckpoints(remoteDoc.checkpoints);
       }
-      setDocumentReady(true);
-      setSyncState('synced');
-    }).catch(() => { if (active) { setDocumentReady(true); setSyncState('error'); } });
-    return () => { active = false; };
-  }, [session?.user.id]);
-  useEffect(() => {
-    if (!session?.user.id || !supabase) return;
-    const channel = supabase.channel(`keeper-document:${session.user.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'keeper_sync_state', filter: `user_id=eq.${session.user.id}` }, async payload => {
-      if (dirtyDocument.current || !payload.new) return;
-      const row = payload.new as { revision?: number };
-      const latest = await readRemoteDocument(session.user.id);
-      if (!latest) return;
-      remoteRevision.current = row.revision ?? latest.revision;
-      const document = latest.document;
-      applyingRemoteDocument.current = true;
-      setCollections(document.collections ?? []);
-      setPreferences(document.preferences ?? defaultPreferences);
-      setProfile(current => {
-        const remoteProfile = document.profile ?? { name: defaultDisplayName, email: '' };
-        return current.name.trim().toLowerCase() === defaultDisplayName && remoteProfile.name.trim().toLowerCase() === defaultDisplayName
-          ? { ...remoteProfile, name: displayNameFromEmail(session.user.email) }
-          : remoteProfile;
-      });
-      setWidgets(document.widgets ?? []);
-      setSearchPosition(document.searchPosition ?? { x: 0, y: 0 });
-      searchPositionRef.current = document.searchPosition ?? { x: 0, y: 0 };
-      setCheckpoints(current => {
-        const merged = [...(document.checkpoints ?? [])];
-        for (const checkpoint of current) if (!merged.some(item => item.exportedAt === checkpoint.exportedAt)) merged.push(checkpoint);
-        if (merged.length !== (document.checkpoints ?? []).length) dirtyDocument.current = true;
-        return merged;
-      });
-    }).subscribe();
-    return () => { void supabase?.removeChannel(channel); };
-  }, [session?.user.id]);
-  useEffect(() => {
-    if (!session?.user.id || !documentReady) return;
-    const snapshot = JSON.stringify(documentSnapshot());
-    if (applyingRemoteDocument.current) {
-      applyingRemoteDocument.current = false;
-      lastSyncedSnapshot.current = snapshot;
-      return;
-    }
-    if (lastSyncedSnapshot.current === null) {
-      // Treat the initial local/remote state as the baseline; only a later user change triggers a write.
-      lastSyncedSnapshot.current = snapshot;
-      return;
-    }
-    if (lastSyncedSnapshot.current === snapshot) return;
-    const userId = session.user.id;
-    dirtyDocument.current = true;
-    window.clearTimeout(syncTimer.current);
-    syncTimer.current = window.setTimeout(async () => {
-      setSyncState('syncing');
-      try {
-        remoteRevision.current = (await writeRemoteDocument(userId, JSON.parse(snapshot), remoteRevision.current ?? null)) ?? null;
-        lastSyncedSnapshot.current = snapshot;
-        dirtyDocument.current = false;
-        setSyncState('synced');
-      } catch {
-        // Keep the local edits, refresh the remote revision, and let the next
-        // snapshot attempt write against the current version.
-        try {
-          const latest = await readRemoteDocument(userId);
-          remoteRevision.current = latest?.revision ?? null;
-        } catch { /* The next local edit or reload will retry the read. */ }
-        setSyncState('error');
-      }
-    }, 500);
-    return () => window.clearTimeout(syncTimer.current);
-  }, [session?.user.id, documentReady, documentSnapshot]);
+    );
+    const unsubscribe = syncEngine.subscribe(state => {
+      setSyncState(state.status);
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [session, documentSnapshot]);
   useLayoutEffect(() => {
     const root = appRef.current;
     const scene = root?.querySelector<HTMLElement>('.dashboard-home, .collection-page');
@@ -294,7 +212,7 @@ function App() {
     const fontScale = displayedPreferences.size / 16;
     root.style.setProperty('--font-scale', String(fontScale));
     for (const [token, base] of [['--text-xs', 12], ['--text-sm', 14], ['--text-md', 16], ['--text-lg', 20], ['--text-xl', 28]] as const) root.style.setProperty(token, `${base * fontScale}px`);
-    const validImage = displayedPreferences.imagePath ? backgroundImageUrl ?? '' : (() => { try { const url = new URL(displayedPreferences.image); return ['https:', 'http:'].includes(url.protocol) ? url.href : ''; } catch { return ''; } })();
+    const validImage = displayedPreferences.imagePath ? (backgroundImageUrl ?? '') : (displayedPreferences.image || '');
     const background = displayedPreferences.background === 'gradient' ? `linear-gradient(135deg, ${displayedPreferences.color1}, ${displayedPreferences.color2})` : displayedPreferences.background === 'image' && validImage ? `linear-gradient(rgba(8,9,11,.4), rgba(8,9,11,.52)), url("${validImage}")` : `linear-gradient(${displayedPreferences.color1}, ${displayedPreferences.color1})`;
     root.style.setProperty('--canvas-background', background);
     try { localStorage.setItem('keeper-preferences', JSON.stringify(preferences)); } catch { /* Keep the current appearance for this session if storage is full. */ }
@@ -347,12 +265,22 @@ function App() {
     clearGuides();
     try { localStorage.setItem('keeper-search-position', JSON.stringify(searchPositionRef.current)); } catch { /* Keep the position for this session if storage is unavailable. */ }
     setSearchPosition(searchPositionRef.current);
+    void syncEngine.queueMutation('search_position', 'user_search_pos', 'update', searchPositionRef.current);
   };
   const saveCollection = () => {
     const name = newCollection.trim();
     if (!name) return;
-    if (editingCollection) { setCollections(items => items.map(c => c.id === editingCollection.id ? { ...c, name, color: newCollectionColor } : c)); notify('Collection updated', 'success'); }
-    else { const item = { id: createId(), name, color: newCollectionColor, sites: [] }; setCollections(items => [...items, item]); setActive(item.id); notify('Collection created', 'success'); }
+    if (editingCollection) {
+      setCollections(items => items.map(c => c.id === editingCollection.id ? { ...c, name, color: newCollectionColor } : c));
+      void syncEngine.queueMutation('collection', editingCollection.id, 'update', { name, color: newCollectionColor });
+      notify('Collection updated', 'success');
+    } else {
+      const item: Collection = { id: createId(), name, color: newCollectionColor, sites: [] };
+      setCollections(items => [...items, item]);
+      setActive(item.id);
+      void syncEngine.queueMutation('collection', item.id, 'insert', item);
+      notify('Collection created', 'success');
+    }
     setEditingCollection(null); setNewCollection(''); setModal(null);
   };
   const dismissOnboarding = () => { setOnboardingOpen(false); try { localStorage.setItem('keeper-welcome-seen', 'true'); } catch { /* Keep the welcome dismissed for this session. */ } };
@@ -363,21 +291,20 @@ function App() {
       let preservedCheckpoints = checkpoints;
       if (session?.user.id) {
         if (!supabase) throw new Error('Cloud sync is unavailable');
-        const remote = await readRemoteDocument(session.user.id);
-        preservedCheckpoints = [...new Map([...(remote?.document.checkpoints ?? []), ...checkpoints].map(item => [item.exportedAt, item])).values()]
-          .sort((a, b) => Date.parse(a.exportedAt) - Date.parse(b.exportedAt)).slice(-5);
-        const avatarPath = remote?.document.profile.avatarPath ?? profile.avatarPath;
+        const avatarPath = profile.avatarPath;
         if (avatarPath) {
           const { error } = await supabase.storage.from('profile-pictures').remove([avatarPath]);
           if (error) throw error;
         }
-        const backgroundPath = remote?.document.preferences.imagePath ?? preferences.imagePath;
+        const backgroundPath = preferences.imagePath;
         if (backgroundPath) {
           const { error } = await supabase.storage.from('background-images').remove([backgroundPath]);
           if (error) throw error;
         }
-        remoteRevision.current = await clearRemoteKeeperData(session.user.id, preservedCheckpoints);
+        await clearRemoteKeeperData(session.user.id, preservedCheckpoints);
       }
+      await clearOutbox();
+      resetSyncMetadata();
       localStorage.setItem('keeper-checkpoints', JSON.stringify(preservedCheckpoints));
       for (const key of ['keeper-data', 'keeper-preferences', 'keeper-profile', 'keeper-widgets', 'keeper-search-position', 'keeper-welcome-seen']) localStorage.removeItem(key);
       window.location.reload();
@@ -385,27 +312,66 @@ function App() {
       notify('Could not complete deletion. Local data was kept; please retry when connected. A cloud image may already have been removed.', 'error');
     }
   };
-  const addWidget = (type: DashboardWidget['type']) => { const width = type === 'calendar' ? 228 : 180; const height = type === 'calendar' ? 230 : 130; const areaWidth = document.querySelector('.dashboard-widgets')?.clientWidth ?? window.innerWidth * .898; const columns = Math.max(1, Math.floor(areaWidth / 250)); const index = widgets.length; setWidgets(items => [...items, { id: createId(), type, width, height, x: index % columns * 250, y: Math.floor(index / columns) * 245 }]); setWidgetPickerOpen(false); notify(`${type === 'clock' ? 'Clock' : 'Calendar'} widget added`, 'success'); };
+  const addWidget = (type: DashboardWidget['type']) => {
+    const width = type === 'calendar' ? 228 : 180;
+    const height = type === 'calendar' ? 230 : 130;
+    const areaWidth = document.querySelector('.dashboard-widgets')?.clientWidth ?? window.innerWidth * .898;
+    const columns = Math.max(1, Math.floor(areaWidth / 250));
+    const index = widgets.length;
+    const newWidget: DashboardWidget = { id: createId(), type, width, height, x: index % columns * 250, y: Math.floor(index / columns) * 245 };
+    setWidgets(items => [...items, newWidget]);
+    void syncEngine.queueMutation('widget', newWidget.id, 'insert', newWidget);
+    setWidgetPickerOpen(false);
+    notify(`${type === 'clock' ? 'Clock' : 'Calendar'} widget added`, 'success');
+  };
   const deleteCollection = (collection: Collection) => {
     setCollections(items => items.filter(c => c.id !== collection.id));
     if (active === collection.id) setActive(null);
+    void syncEngine.queueMutation('collection', collection.id, 'delete', null);
     setMenu(null); setConfirmDelete(null); notify(`Deleted ${collection.name}`, 'success');
   };
-  const saveSite = () => { const url = domainOf(newUrl.trim()); if (!current || !newName.trim() || !url) { notify('Enter a name and a valid HTTPS website address', 'warning'); return; } const site = { id: editing?.id ?? createId(), name: newName.trim().slice(0, 200), url }; setCollections(v => v.map(c => c.id === current.id ? { ...c, sites: editing ? c.sites.map(s => s.id === editing.id ? site : s) : [...c.sites, site] } : c)); setNewName(''); setNewUrl(''); setEditing(null); setModal(null); notify(editing ? 'Website updated' : 'Website saved', 'success'); };
+  const saveSite = () => {
+    const url = domainOf(newUrl.trim());
+    if (!current || !newName.trim() || !url) { notify('Enter a name and a valid HTTPS website address', 'warning'); return; }
+    const site: Site = { id: editing?.id ?? createId(), name: newName.trim().slice(0, 200), url };
+    if (editing) {
+      setCollections(v => v.map(c => c.id === current.id ? { ...c, sites: c.sites.map(s => s.id === editing.id ? site : s) } : c));
+      void syncEngine.queueMutation('site', site.id, 'update', { ...site, collectionId: current.id });
+    } else {
+      setCollections(v => v.map(c => c.id === current.id ? { ...c, sites: [...c.sites, site] } : c));
+      void syncEngine.queueMutation('site', site.id, 'insert', { ...site, collectionId: current.id, sortOrder: current.sites.length });
+    }
+    setNewName(''); setNewUrl(''); setEditing(null); setModal(null);
+    notify(editing ? 'Website updated' : 'Website saved', 'success');
+  };
   const openSiteModal = (site?: Site) => { setEditing(site ?? null); setNewName(site?.name ?? ''); setNewUrl(site?.url ?? ''); setModal('site'); setMenu(null); };
-  const removeSite = (site: Site) => { setCollections(v => v.map(c => ({ ...c, sites: c.sites.filter(s => s.id !== site.id) }))); setMenu(null); notify('Website removed', 'success'); };
-  const moveSite = (siteId: string, targetId: string) => { let moved: Site | undefined; const stripped = collections.map(c => ({ ...c, sites: c.sites.filter(s => { if (s.id === siteId) { moved = s; return false; } return true; }) })); setCollections(stripped.map(c => c.id === targetId && moved ? { ...c, sites: [...c.sites, moved] } : c)); };
+  const removeSite = (site: Site) => {
+    setCollections(v => v.map(c => ({ ...c, sites: c.sites.filter(s => s.id !== site.id) })));
+    void syncEngine.queueMutation('site', site.id, 'delete', null);
+    setMenu(null); notify('Website removed', 'success');
+  };
+  const moveSite = (siteId: string, targetId: string) => {
+    let moved: Site | undefined;
+    const stripped = collections.map(c => ({ ...c, sites: c.sites.filter(s => { if (s.id === siteId) { moved = s; return false; } return true; }) }));
+    setCollections(stripped.map(c => c.id === targetId && moved ? { ...c, sites: [...c.sites, moved] } : c));
+    void syncEngine.queueMutation('site', siteId, 'update', { collectionId: targetId });
+  };
   const handleDragEnd = ({ active: dragged, over, delta }: DragEndEvent) => {
     if (dragged.data.current?.type === 'widget') {
       const area = document.querySelector('.dashboard-widgets');
       const id = String(dragged.data.current.widgetId);
+      let updatedX = 0;
+      let updatedY = 0;
       setWidgets(items => items.map(widget => {
         if (widget.id !== id) return widget;
         const width = widget.width ?? (widget.type === 'calendar' ? 228 : 180);
         const height = widget.height ?? (widget.type === 'calendar' ? 230 : 130);
         const bounds = area?.getBoundingClientRect();
-        return { ...widget, x: Math.max(0, Math.min(window.innerWidth - (bounds?.left ?? 0) - width, (widget.x ?? 0) + delta.x)), y: Math.max(0, Math.min(window.innerHeight - 90 - (bounds?.top ?? 0) - height, (widget.y ?? 0) + delta.y)) };
+        updatedX = Math.max(0, Math.min(window.innerWidth - (bounds?.left ?? 0) - width, (widget.x ?? 0) + delta.x));
+        updatedY = Math.max(0, Math.min(window.innerHeight - 90 - (bounds?.top ?? 0) - height, (widget.y ?? 0) + delta.y));
+        return { ...widget, x: updatedX, y: updatedY };
       }));
+      void syncEngine.queueMutation('widget', id, 'update', { x: updatedX, y: updatedY });
       return;
     }
     if (!over) return;
@@ -413,7 +379,18 @@ function App() {
       if (over.data.current?.type !== 'collection') return;
       const from = String(dragged.data.current.collectionId);
       const to = String(over.data.current.collectionId);
-      setCollections(items => { const fromIndex = items.findIndex(c => c.id === from); const toIndex = items.findIndex(c => c.id === to); return fromIndex >= 0 && toIndex >= 0 ? arrayMove(items, fromIndex, toIndex) : items; });
+      setCollections(items => {
+        const fromIndex = items.findIndex(c => c.id === from);
+        const toIndex = items.findIndex(c => c.id === to);
+        if (fromIndex >= 0 && toIndex >= 0) {
+          const next = arrayMove(items, fromIndex, toIndex);
+          next.forEach((col, idx) => {
+            void syncEngine.queueMutation('collection', col.id, 'update', { sortOrder: idx });
+          });
+          return next;
+        }
+        return items;
+      });
       return;
     }
     const sourceId = String(dragged.id);
@@ -428,13 +405,20 @@ function App() {
       if (fromCollection === toCollection) {
         const targetIndex = source.sites.findIndex(s => s.id === String(over.id));
         if (targetIndex < 0 || targetIndex === sourceIndex) return items;
-        return items.map(c => c.id === fromCollection ? { ...c, sites: arrayMove(c.sites, sourceIndex, targetIndex) } : c);
+        const reordered = arrayMove(source.sites, sourceIndex, targetIndex);
+        reordered.forEach((s, idx) => {
+          void syncEngine.queueMutation('site', s.id, 'update', { collectionId: fromCollection, sortOrder: idx });
+        });
+        return items.map(c => c.id === fromCollection ? { ...c, sites: reordered } : c);
       }
       const [site] = source.sites.slice(sourceIndex, sourceIndex + 1);
       const remaining = source.sites.filter(s => s.id !== sourceId);
       const targetIndex = target.sites.findIndex(s => s.id === String(over.id));
       const destination = [...target.sites];
       destination.splice(targetIndex < 0 ? destination.length : targetIndex, 0, site);
+      destination.forEach((s, idx) => {
+        void syncEngine.queueMutation('site', s.id, 'update', { collectionId: toCollection, sortOrder: idx });
+      });
       return items.map(c => c.id === fromCollection ? { ...c, sites: remaining } : c.id === toCollection ? { ...c, sites: destination } : c);
     });
   };
@@ -453,10 +437,23 @@ function App() {
         </div>
         <button className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`} aria-label="Next 6 collections" title="Next 6 collections" disabled={collectionPage >= collectionPageCount - 1} onClick={() => setCollectionPageIndex(page => Math.min(collectionPageCount - 1, page + 1))}><ChevronRight size={17}/></button>
       </div>
+      <div className="topbar-sync-action">
+        <SyncStatusBadge onOpenSettings={() => { setSettingsSection('data'); setModal('settings'); }} />
+      </div>
     </header>
 
     {!current ? <section className="home dashboard-home">
-      <DashboardWidgets widgets={widgets} onRemove={id => setWidgets(items => items.filter(widget => widget.id !== id))} onResize={(id, size) => setWidgets(items => items.map(widget => widget.id === id ? { ...widget, ...size } : widget))}/>
+      <DashboardWidgets
+        widgets={widgets}
+        onRemove={id => {
+          setWidgets(items => items.filter(widget => widget.id !== id));
+          void syncEngine.queueMutation('widget', id, 'delete', null);
+        }}
+        onResize={(id, size) => {
+          setWidgets(items => items.map(widget => widget.id === id ? { ...widget, ...size } : widget));
+          void syncEngine.queueMutation('widget', id, 'update', size);
+        }}
+      />
       {alignmentGuides.map((guide, index) => <span key={`${guide.axis}-${guide.position}-${index}`} aria-hidden="true" className={`alignment-guide alignment-guide-${guide.axis}`} style={guide.axis === 'x' ? { left: guide.position } : { top: guide.position }}/>) }
       <div className="hero-copy"><div className={`search-wrap search-draggable ${searchDragging ? 'is-dragging' : ''}`} style={{ transform: `translate3d(${searchPosition.x}px, ${searchPosition.y}px, 0)` }} onPointerDown={startSearchDrag} onPointerMove={moveSearch} onPointerUp={endSearchDrag} onPointerCancel={endSearchDrag}><Search size={19} className="search-icon"/><input value={search} onChange={e => setSearch(e.target.value)} onFocus={() => setQueryOpen(true)} onKeyDown={e => { if (e.key === 'Enter' && search.trim()) { window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank'); } }} placeholder="Search the web or your saved places..."/><kbd><Command size={11}/> K</kbd><button className="search-go" aria-label="Search" onClick={() => search.trim() && window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><ArrowUpRight size={17}/></button>
         {queryOpen && search.trim() && <div className="search-results">{results.slice(0, 5).map(s => <a key={s.id} href={`https://${s.url}`} className="search-result"><img src={faviconFor(s.url)}/><span>{s.name}</span><small>{s.collection}</small></a>)}<button className="web-result" onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><Search size={14}/> Search the web for “{search}”</button></div>}</div>
@@ -475,7 +472,62 @@ function App() {
     {modal && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && (appearancePreview && modal === 'settings' ? (setAppearancePreview(null), setModal(null)) : setModal(null))}><div className={`modal ${modal === 'settings' ? 'settings-modal' : ''}`}><button className="modal-close" onClick={() => { if (modal === 'settings') setAppearancePreview(null); setModal(null); }} aria-label="Close"><X size={17}/></button>
       {modal === 'collection' && <><span className="modal-icon"><FolderPlus size={20}/></span><div className="modal-eyebrow">{editingCollection ? 'UPDATE COLLECTION' : 'A NEW LITTLE CORNER'}</div><h2>{editingCollection ? 'Rename collection' : 'Create a collection'}</h2><p>{editingCollection ? 'Choose a name that feels right.' : 'Give your favorite places a place of their own.'}</p><label className="field-label">COLLECTION NAME</label><input className="field" autoFocus placeholder="e.g. Weekend reading" value={newCollection} onChange={e => setNewCollection(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveCollection()}/><label className="field-label">COLLECTION COLOR</label><ColorPicker label="Collection color" value={newCollectionColor} fallbackColor={preferences.accent} allowNone onChange={setNewCollectionColor}/><div className="modal-actions"><button className="cancel-button" onClick={() => { setEditingCollection(null); setModal(null); }}>Cancel</button><button className="primary-button" onClick={saveCollection}>{editingCollection ? 'Save changes' : 'Create collection'} <ArrowUpRight size={15}/></button></div></>}
       {modal === 'site' && <><span className="modal-icon"><Link2 size={20}/></span><div className="modal-eyebrow">{editing ? 'TIDY UP YOUR COLLECTION' : `ADD TO ${current?.name.toUpperCase()}`}</div><h2>{editing ? 'Edit website' : 'Save a website'}</h2><p>A shortcut to somewhere you love.</p><label className="field-label">DISPLAY NAME</label><input className="field" autoFocus placeholder="e.g. Are.na" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><label className="field-label">WEBSITE ADDRESS</label><input className="field" placeholder="e.g. are.na" value={newUrl} onChange={e => setNewUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><div className="modal-actions"><button className="cancel-button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" onClick={saveSite}>{editing ? 'Save changes' : 'Save website'} <ArrowUpRight size={15}/></button></div></>}
-      {modal === 'settings' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onAppearancePreview={setAppearancePreview} collections={collections} onCollectionsUpdate={updates => setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })))} onNotify={notify} initialSection={settingsSection} initialCollectionId={settingsCollectionId} profile={profile} setProfile={setProfile} onImport={importBackup} onWipeLocalData={wipeAllKeeperData} widgets={widgets} searchPosition={searchPosition} checkpoints={checkpoints} onCheckpointsChange={setCheckpoints} userEmail={session?.user.email ?? ''} syncState={syncState} onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }} onSignIn={() => { setModal(null); setAuthModalOpen(true); }}/ >}
+      {modal === 'settings' && <SettingsPanel
+        preferences={preferences}
+        setPreferences={action => {
+          setPreferences(current => {
+            const next = typeof action === 'function' ? action(current) : action;
+            void syncEngine.queueMutation('preferences', 'user_preferences', 'update', next);
+            return next;
+          });
+        }}
+        onAppearancePreview={setAppearancePreview}
+        collections={collections}
+        onCollectionsUpdate={updates => {
+          setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })));
+          for (const [colId, patch] of Object.entries(updates)) {
+            void syncEngine.queueMutation('collection', colId, 'update', patch);
+          }
+        }}
+        onNotify={notify}
+        initialSection={settingsSection}
+        initialCollectionId={settingsCollectionId}
+        profile={profile}
+        setProfile={action => {
+          setProfile(current => {
+            const next = typeof action === 'function' ? action(current) : action;
+            void syncEngine.queueMutation('profile', 'user_profile', 'update', next);
+            return next;
+          });
+        }}
+        onImport={importBackup}
+        onWipeLocalData={wipeAllKeeperData}
+        widgets={widgets}
+        searchPosition={searchPosition}
+        checkpoints={checkpoints}
+        onCheckpointsChange={action => {
+          setCheckpoints(current => {
+            const next = typeof action === 'function' ? action(current) : action;
+            const currentIds = new Set(current.map(c => c.exportedAt));
+            const nextIds = new Set(next.map(c => c.exportedAt));
+            for (const cp of next) {
+              if (!currentIds.has(cp.exportedAt)) {
+                void syncEngine.queueMutation('checkpoint', cp.exportedAt, 'insert', cp);
+              }
+            }
+            for (const cp of current) {
+              if (!nextIds.has(cp.exportedAt)) {
+                void syncEngine.queueMutation('checkpoint', cp.exportedAt, 'delete', null);
+              }
+            }
+            return next;
+          });
+        }}
+        userEmail={session?.user.email ?? ''}
+        syncState={syncState}
+        onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }}
+        onSignIn={() => { setModal(null); setAuthModalOpen(true); }}
+      />}
 
     </div></div>}
     {onboardingOpen && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && dismissOnboarding()}><section className="modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><button className="modal-close" onClick={dismissOnboarding} aria-label="Close"><X size={17}/></button><div className="modal-eyebrow">WELCOME TO KEEPER</div><h2 id="onboarding-title">Your favorite places, all in one spot.</h2><p>Make a personal dashboard for the websites you visit most.</p><ul className="onboarding-features"><li><FolderPlus size={17}/><span><strong>Collections</strong>Group websites by work, interests, or anything you like.</span></li><li><Link2 size={17}/><span><strong>Website shortcuts</strong>Save a name and address, then open it from your collection.</span></li><li><Search size={17}/><span><strong>Quick search</strong>Find saved websites or search the web from the home screen.</span></li><li><Settings size={17}/><span><strong>Make it yours</strong>Adjust the look, add clock or calendar widgets, and back up your data in settings.</span></li></ul><div className="modal-actions"><button className="primary-button" onClick={dismissOnboarding}>Get started <ArrowUpRight size={15}/></button></div></section></div>}
