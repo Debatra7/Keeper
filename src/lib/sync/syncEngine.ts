@@ -13,6 +13,8 @@ import {
   setLastSyncedAt,
   getCloudBackupEnabled,
   setCloudBackupEnabled,
+  getAutomatedSyncEnabled,
+  setAutomatedSyncEnabled,
 } from './db';
 import { mergeRemoteChanges, rebaseDocument } from './conflictResolver';
 
@@ -29,6 +31,7 @@ export class SyncEngine {
   private errorDetails: SyncErrorDetails | null = null;
   private serverSeq = 0;
   private cloudBackupEnabled = true;
+  private automatedSyncEnabled = true;
   private isOnline = true;
 
   private isSyncing = false;
@@ -47,6 +50,7 @@ export class SyncEngine {
     this.serverSeq = getLastServerSeq();
     this.lastSyncedAt = getLastSyncedAt();
     this.cloudBackupEnabled = getCloudBackupEnabled();
+    this.automatedSyncEnabled = getAutomatedSyncEnabled();
     this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
     if (!this.cloudBackupEnabled) {
@@ -73,6 +77,7 @@ export class SyncEngine {
       deviceId: this.deviceId,
       serverSeq: this.serverSeq,
       cloudBackupEnabled: this.cloudBackupEnabled,
+      automatedSyncEnabled: this.automatedSyncEnabled,
       isOnline: this.isOnline,
     };
   }
@@ -118,6 +123,8 @@ export class SyncEngine {
     this.cloudBackupEnabled = enabled;
     setCloudBackupEnabled(enabled);
 
+    if (!enabled) this.setAutomatedSyncEnabled(false);
+
     if (!enabled) {
       if (this.syncTimeout) window.clearTimeout(this.syncTimeout);
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
@@ -125,10 +132,23 @@ export class SyncEngine {
       this.errorDetails = null;
       this.notifyState();
     } else {
-      this.status = this.isOnline ? 'syncing' : 'offline';
+      this.status = this.isOnline ? 'synced' : 'offline';
       this.notifyState();
-      this.scheduleSync(50);
+      if (this.automatedSyncEnabled) this.scheduleSync(50);
     }
+  }
+
+  public setAutomatedSyncEnabled(enabled: boolean): void {
+    if (this.automatedSyncEnabled === enabled) return;
+    this.automatedSyncEnabled = enabled;
+    setAutomatedSyncEnabled(enabled);
+    if (!enabled) {
+      if (this.syncTimeout) window.clearTimeout(this.syncTimeout);
+      if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
+    } else if (this.cloudBackupEnabled) {
+      this.scheduleSync(100);
+    }
+    this.notifyState();
   }
 
   public setSession(
@@ -260,7 +280,7 @@ export class SyncEngine {
   }
 
   public scheduleSync(delayMs = 250): void {
-    if (!this.cloudBackupEnabled) return;
+    if (!this.cloudBackupEnabled || !this.automatedSyncEnabled) return;
     if (this.syncTimeout) {
       window.clearTimeout(this.syncTimeout);
     }
@@ -450,9 +470,7 @@ export class SyncEngine {
       this.retryAttempt++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(this.retryAttempt, 5)));
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
-      this.retryTimeout = window.setTimeout(() => {
-        void this.sync();
-      }, backoffMs);
+      if (this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
     } finally {
       this.isSyncing = false;
       if (this.hasPendingWork) {

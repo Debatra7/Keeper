@@ -144,8 +144,8 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
         <div className="settings-title">CLOUD BACKUP & MULTI-DEVICE SYNC</div>
         <div className="sync-backup-toggle-row data-backup-toggle">
           <div>
-            <strong>Enable Cloud Backup</strong>
-            <small className="settings-help">Synchronizes your bookmarks, widgets, and appearance settings incrementally across all signed-in devices. Turn off to keep edits exclusively local to this browser.</small>
+            <strong>Cloud backup</strong>
+            <small className="settings-help">Master cloud option. Turn off to use local-only mode; no cloud backup or sync will be available.</small>
           </div>
           <label className="switch-toggle" aria-label="Toggle cloud backup">
             <input
@@ -155,6 +155,10 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
             />
             <span className="switch-slider" />
           </label>
+        </div>
+        <div className="sync-backup-toggle-row data-backup-toggle automated-sync-toggle">
+          <div><strong>Automated sync</strong><small>When off, changes sync only when you click Sync Now.</small></div>
+          <label className="switch-toggle" aria-label="Toggle automated sync"><input type="checkbox" checked={engineState.automatedSyncEnabled} disabled={!engineState.cloudBackupEnabled} onChange={e => { if (e.target.checked && !engineState.cloudBackupEnabled) window.dispatchEvent(new CustomEvent('keeper:toast', { detail: { message: 'Turn on Cloud backup to enable automated sync.', tone: 'warning' } })); else syncEngine.setAutomatedSyncEnabled(e.target.checked); }}/><span className="switch-slider"/></label>
         </div>
         {!engineState.cloudBackupEnabled && (
           <div className="sync-offline-banner">

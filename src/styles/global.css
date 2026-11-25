@@ -320,6 +320,14 @@ body{min-width:0;width:100vw;height:100vh;height:100dvh;overflow:hidden}
 .data-actions .upload-button{border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.06);color:var(--text);cursor:pointer}
 .data-actions .upload-button:hover{background:rgba(255,255,255,.1)}
 .data-settings .settings-help{max-width:470px;margin-top:13px}
+.data-settings .automated-sync-toggle{display:flex!important;visibility:visible!important;min-height:58px;margin-top:12px;}
+.data-settings .automated-sync-toggle>div{display:flex;flex:1;min-width:0;flex-direction:column;gap:4px;}
+.data-settings .automated-sync-toggle small{display:block;max-width:470px;color:var(--muted);font-size:10px;line-height:1.45;}
+.automated-sync-toggle.disabled{opacity:.48;border-color:rgba(255,255,255,.045);background:rgba(255,255,255,.018);}
+.automated-sync-toggle.disabled strong,.automated-sync-toggle.disabled small{color:#85868e;}
+.automated-sync-toggle .switch-toggle:has(input:disabled){cursor:not-allowed;opacity:.42;}
+.automated-sync-toggle .switch-toggle:has(input:disabled) .switch-slider{cursor:not-allowed;background:rgba(255,255,255,.08);}
+.automated-sync-toggle .switch-toggle:has(input:disabled) .switch-slider:before{background:#85868e;}
 .data-sync-state{display:inline-flex;padding:6px 9px;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:var(--muted);font-size:10px}
 .data-sync-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0;margin:0 0 20px;background:transparent;border:0;border-radius:0}
 .data-sync-email{min-width:0;overflow:hidden;color:var(--text);font-size:12px;text-overflow:ellipsis;white-space:nowrap}
@@ -366,6 +374,7 @@ body{min-width:0;width:100vw;height:100vh;height:100dvh;overflow:hidden}
 .sync-popover-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
 .sync-popover-settings-btn{height:32px;padding:0 10px;font-size:11px}
 .sync-popover-now-btn{height:32px;padding:0 12px;font-size:11px}
+.sync-popover-now-btn:disabled,.data-settings .data-actions .primary-button:disabled{background:rgba(255,255,255,.08)!important;border-color:rgba(255,255,255,.08)!important;color:rgba(255,255,255,.38)!important;box-shadow:none!important;opacity:1;cursor:not-allowed;}
 .sync-diagnostics-popover{box-sizing:border-box;}
 .sync-backup-toggle-row{min-width:0;}
 .sync-backup-toggle-row>div{min-width:0;flex:1;}

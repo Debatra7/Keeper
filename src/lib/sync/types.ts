@@ -61,5 +61,6 @@ export interface SyncEngineState {
   deviceId: string;
   serverSeq: number;
   cloudBackupEnabled: boolean;
+  automatedSyncEnabled: boolean;
   isOnline: boolean;
 }

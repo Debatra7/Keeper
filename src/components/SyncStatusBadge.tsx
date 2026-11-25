@@ -170,8 +170,8 @@ export function SyncStatusBadge({
           {/* Cloud Backup Toggle */}
           <div className="sync-backup-toggle-row">
             <div>
-              <strong>Cloud Backup & Sync</strong>
-              <small>Sync changes across multiple devices automatically</small>
+              <strong>Cloud backup</strong>
+              <small>Required for any cloud backup. Off keeps all data local to this device.</small>
             </div>
             <label className="switch-toggle" aria-label="Toggle cloud backup">
               <input
@@ -179,6 +179,14 @@ export function SyncStatusBadge({
                 checked={syncState.cloudBackupEnabled}
                 onChange={handleToggleBackup}
               />
+              <span className="switch-slider" />
+            </label>
+          </div>
+
+          <div className={`sync-backup-toggle-row automated-sync-toggle ${!syncState.cloudBackupEnabled ? 'disabled' : ''}`}>
+            <div><strong>Automated sync</strong><small>{syncState.automatedSyncEnabled ? 'Changes sync automatically when online.' : 'Sync only runs when you select Sync Now.'}</small></div>
+            <label className="switch-toggle" aria-label="Toggle automated sync">
+              <input type="checkbox" checked={syncState.automatedSyncEnabled} disabled={!syncState.cloudBackupEnabled} onChange={e => { if (e.target.checked && !syncState.cloudBackupEnabled) window.dispatchEvent(new CustomEvent('keeper:toast', { detail: { message: 'Turn on Cloud backup to enable automated sync.', tone: 'warning' } })); else syncEngine.setAutomatedSyncEnabled(e.target.checked); }} />
               <span className="switch-slider" />
             </label>
           </div>

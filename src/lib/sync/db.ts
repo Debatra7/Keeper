@@ -9,6 +9,7 @@ const DEVICE_ID_KEY = 'keeper_device_id';
 const LAST_SEQ_KEY = 'keeper_last_server_seq';
 const LAST_SYNCED_KEY = 'keeper_last_synced_at';
 const CLOUD_BACKUP_ENABLED_KEY = 'keeper_cloud_backup_enabled';
+const AUTOMATED_SYNC_ENABLED_KEY = 'keeper_automated_sync_enabled';
 const LOCAL_STORAGE_OUTBOX_KEY = 'keeper_sync_outbox_fallback';
 
 let cachedDeviceId: string | null = null;
@@ -224,6 +225,13 @@ export function setCloudBackupEnabled(enabled: boolean): void {
   } catch {
     // Ignore storage errors
   }
+}
+
+export function getAutomatedSyncEnabled(): boolean {
+  try { return localStorage.getItem(AUTOMATED_SYNC_ENABLED_KEY) !== 'false'; } catch { return true; }
+}
+export function setAutomatedSyncEnabled(enabled: boolean): void {
+  try { localStorage.setItem(AUTOMATED_SYNC_ENABLED_KEY, String(enabled)); } catch { /* Ignore storage errors */ }
 }
 
 export function resetSyncMetadata(): void {
