@@ -1,6 +1,7 @@
 create or replace function public.get_keeper_document() returns jsonb language plpgsql stable security invoker set search_path='' as $$
 declare uid uuid := (select auth.uid()); result jsonb;
 begin
+  if not exists (select 1 from public.keeper_sync_state where user_id=uid) then return null; end if;
   select jsonb_build_object(
     'revision',(select revision from public.keeper_sync_state where user_id=uid),
     'collections',coalesce((select jsonb_agg(jsonb_build_object('id',c.id,'name',c.name,'color',c.color,'font',c.font_family,'nameFont',c.name_font_family,'cardFont',c.card_font_family,'titleFontSize',c.title_font_size,'cardFontSize',c.card_font_size,'sites',coalesce((select jsonb_agg(jsonb_build_object('id',s.id,'name',s.name,'url',s.url) order by s.sort_order) from public.keeper_sites s where s.user_id=c.user_id and s.collection_id=c.id),'[]'::jsonb)) order by c.sort_order) from public.keeper_collections c where c.user_id=uid),'[]'::jsonb),
