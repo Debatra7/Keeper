@@ -1,5 +1,6 @@
 import type { Collection, Site } from '../features/collections/types';
 import { FONT_OPTIONS, type Preferences } from '../features/settings/preferences';
+import { FONT_SIZES, type FontSize } from '../components/FontSelector';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';
 import type { DashboardWidget } from '../features/dashboard/DashboardWidgets';
 
@@ -16,6 +17,13 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const text = (value: unknown, max: number) => typeof value === 'string' && value.length <= max;
 const color = (value: unknown) => typeof value === 'string' && /^#[\da-f]{6}$/i.test(value);
 const validFont = (value: unknown) => value === undefined || value === null || FONT_OPTIONS.includes(value as typeof FONT_OPTIONS[number]);
+const normalizeFontSize = (value: unknown): FontSize => {
+  if (FONT_SIZES.some(option => option.value === value)) return value as FontSize;
+  if (value === 'small') return 14;
+  if (value === 'large') return 20;
+  if (typeof value === 'number' && value >= 10 && value <= 24) return FONT_SIZES.reduce((closest, option) => Math.abs(option.value - value) < Math.abs(closest - value) ? option.value : closest, 16 as FontSize);
+  return 16;
+};
 
 export function safeWebsiteUrl(value: unknown): string | null {
   if (typeof value !== 'string' || !text(value, 2048) || !value.trim() || /[\u0000-\u0020\\]/.test(value)) return null;
@@ -30,13 +38,15 @@ function validSite(value: unknown): value is Site {
 }
 
 function validCollection(value: unknown): value is Collection {
-  return record(value) && text(value.id, 100) && text(value.name, 200) && (value.color === '' || color(value.color)) && validFont(value.font) && validFont(value.nameFont) && validFont(value.cardFont) && Array.isArray(value.sites) && value.sites.length <= 500 && value.sites.every(validSite);
+  return record(value) && text(value.id, 100) && text(value.name, 200) && (value.color === '' || color(value.color)) && validFont(value.font) && validFont(value.nameFont) && validFont(value.cardFont) && validFontSize(value.titleFontSize) && validFontSize(value.cardFontSize) && Array.isArray(value.sites) && value.sites.length <= 500 && value.sites.every(validSite);
 }
+
+function validFontSize(value: unknown): boolean { return value === undefined || value === null || [14, 16, 20, 24].includes(value as number); }
 
 function validPreferences(value: unknown): value is Preferences {
   if (!record(value)) return false;
   const imageOk = value.image === '' || typeof value.image === 'string' && value.image.length <= 2_100_000 && (/^https:\/\//i.test(value.image) || /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z\d+/]+=*$/i.test(value.image));
-  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && ['small', 'medium', 'large'].includes(String(value.size));
+  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && FONT_SIZES.some(size => size.value === value.size);
 }
 
 function validProfile(value: unknown): value is UserProfile {
@@ -61,8 +71,8 @@ export function normalizeDocument(value: unknown): KeeperDocument | null {
   if (!record(value) || !Array.isArray(value.collections) || !value.collections.every(validCollection)) return null;
   const position = record(value.searchPosition) ? value.searchPosition : {};
   const document = {
-    collections: value.collections.map(collection => ({ ...collection, sites: collection.sites.map(site => ({ ...site, url: safeWebsiteUrl(site.url)! })) })),
-    preferences: value.preferences,
+    collections: value.collections.map(collection => ({ ...collection, titleFontSize: collection.titleFontSize == null ? undefined : normalizeFontSize(collection.titleFontSize), cardFontSize: collection.cardFontSize == null ? undefined : normalizeFontSize(collection.cardFontSize), sites: collection.sites.map(site => ({ ...site, url: safeWebsiteUrl(site.url)! })) })),
+    preferences: record(value.preferences) ? { ...value.preferences, size: normalizeFontSize(value.preferences.size) } : value.preferences,
     profile: value.profile,
     widgets: value.widgets ?? [],
     checkpoints: value.checkpoints ?? [],

@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 
-export function FontSelector({ value, options, onChange }: { value: string; options: readonly string[]; onChange: (font: string) => void }) {
+export const FONT_SIZES = [{ label: 'Small', value: 14 }, { label: 'Medium', value: 16 }, { label: 'Large', value: 20 }, { label: 'Extra large', value: 24 }] as const;
+export type FontSize = typeof FONT_SIZES[number]['value'];
+
+export function FontSizeSelector({ value, onChange, label = 'Font size' }: { value: FontSize; onChange: (size: FontSize) => void; label?: string }) {
+  return <fieldset className="font-size-control"><legend>{label}</legend><div>{FONT_SIZES.map(option => <button type="button" key={option.value} className={value === option.value ? 'chosen' : ''} aria-pressed={value === option.value} onClick={() => onChange(option.value)}>{option.label}</button>)}</div></fieldset>;
+}
+
+export function FontSelector({ value, options, onChange, size, onSizeChange }: { value: string; options: readonly string[]; onChange: (font: string) => void; size?: FontSize; onSizeChange?: (size: FontSize) => void }) {
   const [open, setOpen] = useState(false);
   return <div className="font-picker">
     <button type="button" className="font-picker-trigger" aria-expanded={open} aria-controls="font-options" onClick={() => setOpen(show => !show)}>
@@ -15,5 +22,6 @@ export function FontSelector({ value, options, onChange }: { value: string; opti
       {value === font && <span className="font-option-current">Selected</span>}
       </button>)}
     </div>}
+    {size !== undefined && onSizeChange && <FontSizeSelector value={size} onChange={onSizeChange}/>}
   </div>;
 }

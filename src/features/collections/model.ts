@@ -19,7 +19,7 @@ export const readCollections = (): Collection[] => {
   try {
     const saved = localStorage.getItem('keeper-data');
     if (!saved) return starterCollections;
-    const document = normalizeDocument({ collections: JSON.parse(saved), preferences: { accent: '#000000', background: 'solid', color1: '#000000', color2: '#000000', image: '', font: 'Roboto', size: 'medium' }, profile: { name: '' }, widgets: [], checkpoints: [] });
+    const document = normalizeDocument({ collections: JSON.parse(saved), preferences: { accent: '#000000', background: 'solid', color1: '#000000', color2: '#000000', image: '', font: 'Roboto', size: 16 }, profile: { name: '' }, widgets: [], checkpoints: [] });
     return document?.collections ?? starterCollections;
   } catch { return starterCollections; }
 };

@@ -10,7 +10,7 @@ export function CollectionTab({ collection, active, accent, onSelect, onContextM
     transition: { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' },
   });
 
-  return <button ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .35 : undefined, touchAction: 'none', '--collection-tab-color': collection.color || accent, '--collection-name-font': collection.nameFont ? `'${collection.nameFont}', sans-serif` : collection.font ? `'${collection.font}', sans-serif` : 'var(--ui-font)' } as React.CSSProperties} {...attributes} {...listeners} className={`collection-tab ${active ? 'selected' : ''} ${isOver ? 'drop-target' : ''}`} onClick={onSelect} onContextMenu={onContextMenu}>
-    <span className="tab-name">{collection.name}</span><span className="tab-count">{collection.sites.length}</span>
+  return <button ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .35 : undefined, touchAction: 'none', '--collection-tab-color': collection.color || accent, '--collection-name-font': collection.nameFont ? `'${collection.nameFont}', sans-serif` : collection.font ? `'${collection.font}', sans-serif` : 'var(--ui-font)', '--collection-title-size': `${collection.titleFontSize ?? 16}px` } as React.CSSProperties} {...attributes} {...listeners} className={`collection-tab ${active ? 'selected' : ''} ${isOver ? 'drop-target' : ''}`} onClick={onSelect} onContextMenu={onContextMenu}>
+    <span className="tab-name">{collection.name}</span>
   </button>;
 }

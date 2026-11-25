@@ -70,6 +70,7 @@ function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [searchPosition, setSearchPosition] = useState<{ x: number; y: number }>(() => { try { return JSON.parse(localStorage.getItem('keeper-search-position') || '{"x":0,"y":0}'); } catch { return { x: 0, y: 0 }; } });
   const appRef = useRef<HTMLElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -133,10 +134,45 @@ function App() {
   };
   const removeAvatar = async () => {
     if (!session?.user.id || !supabase || !profile.avatarPath) return;
-    const { error } = await supabase.storage.from('profile-pictures').remove([profile.avatarPath]);
+    const path = profile.avatarPath;
+    const { error } = await supabase.storage.from('profile-pictures').remove([path]);
     if (error) { notify('Could not remove profile picture', 'error'); return; }
     setProfile(current => ({ ...current, avatarPath: undefined }));
     setAvatarUrl(undefined);
+    dirtyDocument.current = true;
+    window.clearTimeout(syncTimer.current);
+    try {
+      let remote = await readRemoteDocument(session.user.id);
+      let nextDocument = { ...(remote?.document ?? documentSnapshot()), profile: { ...(remote?.document.profile ?? profile), avatarPath: undefined } };
+      let revision = remote?.revision ?? null;
+      try {
+        remoteRevision.current = (await writeRemoteDocument(session.user.id, nextDocument, revision)) ?? null;
+      } catch {
+        remote = await readRemoteDocument(session.user.id);
+        if (!remote) throw new Error('Could not read the latest profile');
+        nextDocument = { ...remote.document, profile: { ...remote.document.profile, avatarPath: undefined } };
+        remoteRevision.current = (await writeRemoteDocument(session.user.id, nextDocument, remote.revision)) ?? null;
+      }
+      lastSyncedSnapshot.current = JSON.stringify(nextDocument);
+      dirtyDocument.current = false;
+      setSyncState('synced');
+      if (JSON.stringify(documentSnapshot()) !== lastSyncedSnapshot.current) {
+        window.clearTimeout(syncTimer.current);
+        syncTimer.current = window.setTimeout(async () => {
+          try {
+            const snapshot = JSON.stringify(documentSnapshot());
+            remoteRevision.current = (await writeRemoteDocument(session.user.id, JSON.parse(snapshot), remoteRevision.current)) ?? null;
+            lastSyncedSnapshot.current = snapshot;
+            setSyncState('synced');
+          } catch { setSyncState('error'); }
+          finally { dirtyDocument.current = false; }
+        }, 500);
+      }
+    } catch {
+      setSyncState('error');
+      notify('Profile picture removed here, but could not sync the change. Please retry when connected.', 'error');
+      return;
+    }
     notify('Profile picture removed', 'success');
   };
   useEffect(() => {
@@ -271,15 +307,22 @@ function App() {
     gsap.fromTo(toast, { autoAlpha: 0, x: -8 }, { autoAlpha: 1, x: 0, duration: .18, ease: 'power1.out', clearProps: 'transform,opacity,visibility' });
   }, [toasts.at(-1)?.id]);
   useEffect(() => { searchPositionRef.current = searchPosition; }, [searchPosition]);
+  useLayoutEffect(() => {
+    const element = menuRef.current;
+    if (!menu || !element) return;
+    const bounds = element.getBoundingClientRect();
+    element.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - bounds.width - 8))}px`;
+    element.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - bounds.height - 8))}px`;
+  }, [menu]);
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--accent', displayedPreferences.accent);
     root.style.setProperty('--accent-soft', `color-mix(in srgb, ${displayedPreferences.accent} 18%, transparent)`);
     root.style.setProperty('--ui-font', `'${FONT_OPTIONS.includes(displayedPreferences.font as typeof FONT_OPTIONS[number]) ? displayedPreferences.font : 'Roboto'}', sans-serif`);
-    const layout = displayedPreferences.size === 'small' ? { scale: '.9', width: '111.111vw', height: '111.111vh' } : displayedPreferences.size === 'large' ? { scale: '1.08', width: '92.593vw', height: '92.593vh' } : { scale: '1', width: '100vw', height: '100vh' };
-    root.style.setProperty('--ui-scale', layout.scale);
-    root.style.setProperty('--ui-width', layout.width);
-    root.style.setProperty('--ui-height', layout.height);
+    root.style.setProperty('--ui-font-size', `${displayedPreferences.size}px`);
+    const fontScale = displayedPreferences.size / 16;
+    root.style.setProperty('--font-scale', String(fontScale));
+    for (const [token, base] of [['--text-xs', 12], ['--text-sm', 14], ['--text-md', 16], ['--text-lg', 20], ['--text-xl', 28]] as const) root.style.setProperty(token, `${base * fontScale}px`);
     const validImage = (() => { try { const url = new URL(displayedPreferences.image); return ['https:', 'http:'].includes(url.protocol) ? url.href : displayedPreferences.image.startsWith('data:image/') ? displayedPreferences.image : ''; } catch { return displayedPreferences.image.startsWith('data:image/') ? displayedPreferences.image : ''; } })();
     const background = displayedPreferences.background === 'gradient' ? `linear-gradient(135deg, ${displayedPreferences.color1}, ${displayedPreferences.color2})` : displayedPreferences.background === 'image' && validImage ? `linear-gradient(rgba(8,9,11,.4), rgba(8,9,11,.52)), url("${validImage}")` : `linear-gradient(${displayedPreferences.color1}, ${displayedPreferences.color1})`;
     root.style.setProperty('--canvas-background', background);
@@ -417,7 +460,7 @@ function App() {
       </div>
       <div className="dashboard-add-controls" onClick={event => event.stopPropagation()}><button className="settings-fab dashboard-add-fab" aria-label="Add widget" title="Add widget" aria-expanded={widgetPickerOpen} onClick={() => setWidgetPickerOpen(open => !open)}><Plus size={19}/></button>{widgetPickerOpen && <div className="widget-picker"><div className="widget-picker-heading">ADD A WIDGET</div><button onClick={() => addWidget('clock')}><Clock3 size={16}/> Clock</button><button onClick={() => addWidget('calendar')}><CalendarDays size={16}/> Calendar</button></div>}</div>
       <button className="settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
-    </section> : <section className="collection-page" style={{ '--collection-color': current.color || preferences.accent, '--collection-font': current.cardFont ? `'${current.cardFont}', sans-serif` : current.font ? `'${current.font}', sans-serif` : 'var(--ui-font)' } as CSSProperties}>
+    </section> : <section className="collection-page" style={{ '--collection-color': current.color || preferences.accent, '--collection-font': current.cardFont ? `'${current.cardFont}', sans-serif` : current.font ? `'${current.font}', sans-serif` : 'var(--ui-font)', '--card-font-size': `${current.cardFontSize ?? preferences.size}px` } as CSSProperties}>
       <CollectionGrid collection={current} onContextMenu={(site, e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, site }); }} onMenu={(site, rect) => setMenu({ x: rect.right, y: rect.bottom, site })} onAdd={() => openSiteModal()}/>
       <button className="settings-fab collection-settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
     </section>}
@@ -431,7 +474,7 @@ function App() {
     {authModalOpen && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && setAuthModalOpen(false)}><div className="optional-auth-modal"><button className="modal-close" onClick={() => setAuthModalOpen(false)} aria-label="Close"><X size={17}/></button><AuthScreen recovery={passwordRecovery} onAuthenticated={() => { setAuthModalOpen(false); setPasswordRecovery(false); }}/></div></div>}
     {confirmDelete && <div className="overlay confirm-overlay" onMouseDown={e => e.target === e.currentTarget && setConfirmDelete(null)}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-description"><span className="confirm-icon"><TriangleAlert size={19}/></span><div className="modal-eyebrow">DELETE COLLECTION</div><h2 id="confirm-title">Are you sure?</h2><p id="confirm-description">Delete “{confirmDelete.name}” and its saved websites? This can’t be undone.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setConfirmDelete(null)}>Cancel</button><button className="confirm-delete-button" onClick={() => deleteCollection(confirmDelete)}><X size={15}/> Delete collection</button></div></section></div>}
     <div className="toast-stack" aria-live="polite" aria-atomic="false">{toasts.map(toast => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === 'error' ? 'alert' : 'status'}>{toast.tone === 'success' ? <Check size={16}/> : <TriangleAlert size={16}/>}<span>{toast.message}</span><button aria-label="Dismiss notification" onClick={() => setToasts(items => items.filter(item => item.id !== toast.id))}><X size={14}/></button></div>)}</div>
-    {menu && <div className="context-menu" style={{ left: Math.min(menu.x, window.innerWidth - 210), top: Math.min(menu.y, window.innerHeight - 165) }} onClick={e => e.stopPropagation()}>{menu.collection ? <><button onClick={() => openCollectionModal(menu.collection!)}><FolderPlus size={15}/> Rename collection</button><button onClick={() => { setSettingsCollectionId(menu.collection!.id); setSettingsSection('collections'); setModal('settings'); setMenu(null); }}><Settings size={15}/> Collection settings</button><button className="danger" onClick={() => { setConfirmDelete(menu.collection!); setMenu(null); }}><X size={15}/> Delete collection</button></> : menu.site ? <><button onClick={() => { window.open(`https://${menu.site!.url}`, '_blank'); setMenu(null); }}><ExternalLink size={15}/> Open website</button><button onClick={() => openSiteModal(menu.site)}><Link2 size={15}/> Edit shortcut</button><div className="context-divider"/><div className="context-label">MOVE TO COLLECTION</div>{collections.filter(c => !c.sites.some(s => s.id === menu.site!.id)).map(c => <button key={c.id} onClick={() => { moveSite(menu.site!.id, c.id); setMenu(null); }}><span className="tab-dot" style={{ background: c.color }}/>{c.name}</button>)}<div className="context-divider"/><button className="danger" onClick={() => removeSite(menu.site!)}><X size={15}/> Remove shortcut</button></> : <><button onClick={() => { setActive(null); setMenu(null); }}><Compass size={15}/> Go to dashboard</button><button onClick={() => openCollectionModal()}><FolderPlus size={15}/> New collection</button><button onClick={() => { setModal('settings'); setMenu(null); }}><Settings size={15}/> Settings</button></>}</div>}
+    {menu && <div ref={menuRef} className="context-menu" style={{ left: Math.min(menu.x, window.innerWidth - 220), top: menu.y, '--menu-font': menu.collection?.nameFont ?? menu.collection?.font ?? (menu.site ? collections.find(collection => collection.sites.some(site => site.id === menu.site!.id))?.cardFont : null) ?? 'var(--ui-font)' } as CSSProperties} role="menu" onClick={e => e.stopPropagation()}>{menu.collection ? <><button role="menuitem" onClick={() => openCollectionModal(menu.collection!)}><FolderPlus size={15}/> Rename collection</button><button role="menuitem" onClick={() => { setSettingsCollectionId(menu.collection!.id); setSettingsSection('collections'); setModal('settings'); setMenu(null); }}><Settings size={15}/> Collection settings</button><button role="menuitem" className="danger" onClick={() => { setConfirmDelete(menu.collection!); setMenu(null); }}><X size={15}/> Delete collection</button></> : menu.site ? <><button role="menuitem" onClick={() => { window.open(`https://${menu.site!.url}`, '_blank'); setMenu(null); }}><ExternalLink size={15}/> Open website</button><button role="menuitem" onClick={() => openSiteModal(menu.site)}><Link2 size={15}/> Edit shortcut</button><div className="context-divider"/><div className="context-label">MOVE TO COLLECTION</div>{collections.filter(c => !c.sites.some(s => s.id === menu.site!.id)).map(c => <button role="menuitem" key={c.id} onClick={() => { moveSite(menu.site!.id, c.id); setMenu(null); }}><span className="tab-dot" style={{ background: c.color }}/>{c.name}</button>)}<div className="context-divider"/><button role="menuitem" className="danger" onClick={() => removeSite(menu.site!)}><X size={15}/> Remove shortcut</button></> : <><button role="menuitem" onClick={() => { setActive(null); setMenu(null); }}><Compass size={15}/> Go to dashboard</button><button role="menuitem" onClick={() => openCollectionModal()}><FolderPlus size={15}/> New collection</button><button role="menuitem" onClick={() => { setModal('settings'); setMenu(null); }}><Settings size={15}/> Settings</button></>}</div>}
     <DragOverlay dropAnimation={{ duration: 260, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }}>{draggedSite ? <SiteDragPreview site={draggedSite}/> : null}</DragOverlay>
     {helpOpen && <KeyboardHelp onClose={() => setHelpOpen(false)} />}
   </main></DndContext>;
