@@ -399,3 +399,4 @@ body{min-width:0;width:100vw;height:100vh;height:100dvh;overflow:hidden}
 .font-size-control button.chosen{background:var(--surface);color:var(--text);box-shadow:0 1px 4px #0002}
 @media(max-width:460px){.font-selector{grid-template-columns:1fr}}
 
+.onboarding-modal{width:min(520px,100%)}.onboarding-features{display:grid;gap:14px;margin:24px 0 0;padding:0;list-style:none}.onboarding-features li{display:flex;align-items:flex-start;gap:12px;color:var(--accent)}.onboarding-features li>span{color:var(--muted);font-size:12px;line-height:1.55}.onboarding-features strong{display:block;margin-bottom:2px;color:var(--text);font-size:13px;font-weight:600}.onboarding-modal .modal-actions{margin-top:24px}
