@@ -38,6 +38,7 @@ export class SyncEngine {
   private hasPendingWork = false;
   private syncTimeout: number | null = null;
   private retryTimeout: number | null = null;
+  private syncAbortController: AbortController | null = null;
   private retryAttempt = 0;
   private realtimeChannel: RealtimeChannel | null = null;
 
@@ -51,6 +52,10 @@ export class SyncEngine {
     this.lastSyncedAt = getLastSyncedAt();
     this.cloudBackupEnabled = getCloudBackupEnabled();
     this.automatedSyncEnabled = getAutomatedSyncEnabled();
+    if (!this.cloudBackupEnabled && this.automatedSyncEnabled) {
+      this.automatedSyncEnabled = false;
+      setAutomatedSyncEnabled(false);
+    }
     this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
 
     if (!this.cloudBackupEnabled) {
@@ -128,6 +133,7 @@ export class SyncEngine {
     if (!enabled) {
       if (this.syncTimeout) window.clearTimeout(this.syncTimeout);
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
+      this.syncAbortController?.abort();
       this.status = 'paused';
       this.errorDetails = null;
       this.notifyState();
@@ -397,6 +403,8 @@ export class SyncEngine {
     }
 
     this.isSyncing = true;
+    this.syncAbortController = new AbortController();
+    const requestTimeout = window.setTimeout(() => this.syncAbortController?.abort(), 30000);
     this.status = 'syncing';
     this.notifyState();
 
@@ -411,13 +419,13 @@ export class SyncEngine {
         p_mutations: outbox,
       };
 
-      const { data, error } = await supabase.rpc('sync_keeper_changes', payload);
+      const { data, error } = await supabase.rpc('sync_keeper_changes', payload).abortSignal(this.syncAbortController.signal);
 
       if (error) {
         // If the new CDC incremental RPC is not yet created on the Supabase backend:
         // Gracefully fall back to standard document synchronization so the user is never blocked!
         if (error.code === 'PGRST202' || /public\.sync_keeper_changes/i.test(error.message || '')) {
-          await this.fallbackDocumentSync(outbox);
+          await this.fallbackDocumentSync(outbox, this.syncAbortController.signal);
           return;
         }
         throw error;
@@ -457,11 +465,11 @@ export class SyncEngine {
       this.errorDetails = null;
       await this.refreshPendingCount();
 
-      this.status = 'synced';
+      this.status = this.cloudBackupEnabled ? 'synced' : 'paused';
       this.notifyState();
     } catch (err: any) {
       const isNetwork = !navigator.onLine || /fetch|network|timeout/i.test(err?.message || '');
-      this.status = isNetwork ? 'offline' : 'error';
+      this.status = this.cloudBackupEnabled ? (isNetwork ? 'offline' : 'error') : 'paused';
       this.lastError = err?.message || 'Sync failed';
       this.errorDetails = this.parseError(err);
       this.notifyState();
@@ -470,8 +478,10 @@ export class SyncEngine {
       this.retryAttempt++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(this.retryAttempt, 5)));
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
-      if (this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
+      if (this.cloudBackupEnabled && this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
     } finally {
+      window.clearTimeout(requestTimeout);
+      this.syncAbortController = null;
       this.isSyncing = false;
       if (this.hasPendingWork) {
         this.hasPendingWork = false;
@@ -480,21 +490,21 @@ export class SyncEngine {
     }
   }
 
-  private async fallbackDocumentSync(outbox: Mutation[]): Promise<void> {
+  private async fallbackDocumentSync(outbox: Mutation[], signal: AbortSignal): Promise<void> {
     if (!this.getCurrentDocument || !this.session?.user.id) return;
     const userId = this.session.user.id;
     const currentDoc = this.getCurrentDocument();
 
     try {
-      const remote = await readRemoteDocument(userId);
+      const remote = await readRemoteDocument(userId, signal);
 
       if (outbox.length > 0 || !remote) {
         try {
-          await writeRemoteDocument(userId, currentDoc, remote?.revision ?? null);
+          await writeRemoteDocument(userId, currentDoc, remote?.revision ?? null, signal);
         } catch {
-          const latest = await readRemoteDocument(userId);
+          const latest = await readRemoteDocument(userId, signal);
           if (latest) {
-            await writeRemoteDocument(userId, currentDoc, latest.revision);
+            await writeRemoteDocument(userId, currentDoc, latest.revision, signal);
           }
         }
       } else if (remote?.document) {
@@ -522,9 +532,9 @@ export class SyncEngine {
       this.status = 'synced';
       this.notifyState();
     } catch (fallbackErr: any) {
-      this.status = 'error';
+      this.status = this.cloudBackupEnabled ? 'error' : 'paused';
       this.lastError = fallbackErr?.message || 'Fallback sync failed';
-      this.errorDetails = this.parseError(fallbackErr);
+      this.errorDetails = this.cloudBackupEnabled ? this.parseError(fallbackErr) : null;
       this.notifyState();
     }
   }

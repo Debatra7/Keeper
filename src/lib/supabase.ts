@@ -9,9 +9,11 @@ export const supabase = url && key ? createClient(url, key, {
   auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
 }) : null;
 
-export async function readRemoteDocument(_userId: string) {
+export async function readRemoteDocument(_userId: string, signal?: AbortSignal) {
   if (!supabase) return null;
-  const { data, error } = await supabase.rpc('get_keeper_document');
+  const query = supabase.rpc('get_keeper_document');
+  if (signal) query.abortSignal(signal);
+  const { data, error } = await query;
   if (error) throw error;
   if (data === null) return null;
   if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Remote Keeper document is invalid');
@@ -22,9 +24,11 @@ export async function readRemoteDocument(_userId: string) {
   return { document, revision };
 }
 
-export async function writeRemoteDocument(_userId: string, document: KeeperDocument, revision: number | null) {
+export async function writeRemoteDocument(_userId: string, document: KeeperDocument, revision: number | null, signal?: AbortSignal) {
   if (!supabase) return;
-  const { data, error } = await supabase.rpc('replace_keeper_document', { p_document: document, p_revision: revision });
+  const query = supabase.rpc('replace_keeper_document', { p_document: document, p_revision: revision });
+  if (signal) query.abortSignal(signal);
+  const { data, error } = await query;
   if (error) throw error;
   if (data === null) throw new Error('Sync conflict: document changed on another device');
   return data as number;
