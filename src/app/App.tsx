@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Command, Compass, ExternalLink, FolderPlus, Home, Link2, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Command, Compass, ExternalLink, FolderPlus, Home, Link2, LockKeyhole, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, Modifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -133,6 +133,7 @@ function App() {
   useEffect(() => {
     if (!session?.user.id) {
       setSyncState('local');
+      syncEngine.setSession(null, documentSnapshot);
       return;
     }
     syncEngine.setSession(
@@ -438,7 +439,9 @@ function App() {
         <button className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`} aria-label="Next 6 collections" title="Next 6 collections" disabled={collectionPage >= collectionPageCount - 1} onClick={() => setCollectionPageIndex(page => Math.min(collectionPageCount - 1, page + 1))}><ChevronRight size={17}/></button>
       </div>
       <div className="topbar-sync-action">
-        <SyncStatusBadge onOpenSettings={() => { setSettingsSection('data'); setModal('settings'); }} />
+        {session?.user.id
+          ? <SyncStatusBadge onOpenSettings={() => { setSettingsSection('data'); setModal('settings'); }} />
+          : <button type="button" className="sync-status-badge sync-nav-trigger paused" aria-label="Sign in to use cloud backup and sync" title="Sign in to use cloud backup and sync" onClick={() => { notify('Please sign in first to use cloud backup and sync.', 'warning'); setAuthModalOpen(true); }}><LockKeyhole size={15}/></button>}
       </div>
     </header>
 
@@ -524,6 +527,7 @@ function App() {
           });
         }}
         userEmail={session?.user.email ?? ''}
+        isAuthenticated={!!session?.user.id}
         syncState={syncState}
         onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }}
         onSignIn={() => { setModal(null); setAuthModalOpen(true); }}

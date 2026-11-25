@@ -44,6 +44,7 @@ export class SyncEngine {
 
   private stateListeners: Set<StateListener> = new Set();
   private documentListeners: Set<DocumentUpdateListener> = new Set();
+  private sessionDocumentListener: DocumentUpdateListener | null = null;
   private getCurrentDocument: (() => KeeperDocument) | null = null;
 
   constructor() {
@@ -124,6 +125,7 @@ export class SyncEngine {
   }
 
   public setCloudBackupEnabled(enabled: boolean): void {
+    if (enabled && !this.session?.user.id) return;
     if (this.cloudBackupEnabled === enabled) return;
     this.cloudBackupEnabled = enabled;
     setCloudBackupEnabled(enabled);
@@ -145,6 +147,7 @@ export class SyncEngine {
   }
 
   public setAutomatedSyncEnabled(enabled: boolean): void {
+    if (enabled && (!this.session?.user.id || !this.cloudBackupEnabled)) return;
     if (this.automatedSyncEnabled === enabled) return;
     this.automatedSyncEnabled = enabled;
     setAutomatedSyncEnabled(enabled);
@@ -167,11 +170,15 @@ export class SyncEngine {
     this.session = session;
     this.getCurrentDocument = getCurrentDocument;
 
-    if (onDocumentUpdated) {
-      this.documentListeners.add(onDocumentUpdated);
-    }
+    if (this.sessionDocumentListener) this.documentListeners.delete(this.sessionDocumentListener);
+    this.sessionDocumentListener = session ? onDocumentUpdated ?? null : null;
+    if (this.sessionDocumentListener) this.documentListeners.add(this.sessionDocumentListener);
 
     if (prevUserId !== nextUserId) {
+      if (this.syncTimeout) window.clearTimeout(this.syncTimeout);
+      if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
+      this.syncAbortController?.abort();
+      this.hasPendingWork = false;
       this.serverSeq = getLastServerSeq();
       if (this.realtimeChannel && supabase) {
         void supabase.removeChannel(this.realtimeChannel);
@@ -286,7 +293,7 @@ export class SyncEngine {
   }
 
   public scheduleSync(delayMs = 250): void {
-    if (!this.cloudBackupEnabled || !this.automatedSyncEnabled) return;
+    if (!this.session?.user.id || !this.cloudBackupEnabled || !this.automatedSyncEnabled) return;
     if (this.syncTimeout) {
       window.clearTimeout(this.syncTimeout);
     }
@@ -478,7 +485,7 @@ export class SyncEngine {
       this.retryAttempt++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(this.retryAttempt, 5)));
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
-      if (this.cloudBackupEnabled && this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
+      if (this.session?.user.id && this.cloudBackupEnabled && this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
     } finally {
       window.clearTimeout(requestTimeout);
       this.syncAbortController = null;
