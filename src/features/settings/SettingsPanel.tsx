@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { AlertCircle, Check, Database, Download, Eye, EyeOff, FileUp, Folder, Info, LogIn, Palette, PauseCircle, RotateCcw, Settings, Trash2 } from 'lucide-react';
 import type { Collection } from '../collections/types';
 import { ColorPicker } from '../../components/ColorPicker';
@@ -11,6 +11,7 @@ import { defaultPreferences } from './preferences';
 import { FONT_OPTIONS } from './preferences';
 import { isBackup } from '../../lib/validation';
 import { syncEngine, type SyncEngineState } from '../../lib/sync';
+import { supabase } from '../../lib/supabase';
 
 export type UserProfile = { name: string; email?: string; hideEmail?: boolean; avatarPath?: string };
 export type DataBackup = { version: 1; exportedAt: string; collections: Collection[]; preferences: Preferences; profile: UserProfile; widgets?: DashboardWidget[]; searchPosition?: { x: number; y: number } };
@@ -20,7 +21,7 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   setPreferences: Dispatch<SetStateAction<Preferences>>;
   onAppearancePreview: (preferences: Preferences | null) => void;
   collections: Collection[];
-  onCollectionsUpdate: (updates: Record<string, Partial<Pick<Collection, 'color' | 'nameFont' | 'titleFontSize' | 'cardFont' | 'cardFontSize'>>>) => void;
+  onCollectionsUpdate: (updates: Record<string, Partial<Pick<Collection, 'color' | 'font' | 'nameFont' | 'titleFontSize' | 'cardFont' | 'cardFontSize'>>>) => void;
   onNotify: (message: string, tone?: 'success' | 'warning' | 'error') => void;
   initialSection: 'appearance' | 'collections' | 'profile' | 'data';
   initialCollectionId?: string;
@@ -40,6 +41,7 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
 }) {
   const [section, setSection] = useState<'appearance' | 'collections' | 'profile' | 'data'>(initialSection);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmResetCollection, setConfirmResetCollection] = useState(false);
   const [confirmWipeLocal, setConfirmWipeLocal] = useState(false);
   const [wiping, setWiping] = useState(false);
   const [preview, setPreview] = useState<DataBackup | null>(null);
@@ -51,21 +53,26 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   const [importPreview, setImportPreview] = useState<DataBackup | null>(null);
   const [draftPreferences, setDraftPreferences] = useState(preferences);
   const [draftProfile, setDraftProfile] = useState(profile);
-  const [draftCollectionStyles, setDraftCollectionStyles] = useState<Record<string, Partial<Pick<Collection, 'color' | 'nameFont' | 'titleFontSize' | 'cardFont' | 'cardFontSize'>>>>(() => Object.fromEntries(collections.map(collection => [collection.id, { color: collection.color, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }])));
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState('');
+  const [draftCollectionStyles, setDraftCollectionStyles] = useState<Record<string, Partial<Pick<Collection, 'color' | 'font' | 'nameFont' | 'titleFontSize' | 'cardFont' | 'cardFontSize'>>>>(() => Object.fromEntries(collections.map(collection => [collection.id, { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }])));
   useEffect(() => setSection(initialSection), [initialSection]);
-  useEffect(() => { setDraftCollectionStyles(current => Object.fromEntries(collections.map(collection => [collection.id, current[collection.id] ?? { color: collection.color, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }]))); }, [collections]);
+  useEffect(() => { setDraftCollectionStyles(current => Object.fromEntries(collections.map(collection => [collection.id, current[collection.id] ?? { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }]))); }, [collections]);
   const [selectedCollectionId, setSelectedCollectionId] = useState(initialCollectionId ?? collections[0]?.id ?? '');
   const selectedCollection = collections.find(collection => collection.id === selectedCollectionId) ?? collections[0];
   const selectedStyle = selectedCollection ? { ...selectedCollection, ...(draftCollectionStyles[selectedCollection.id] ?? {}) } : undefined;
   const collectionChanges = Object.fromEntries(collections.flatMap(collection => {
-    const style = draftCollectionStyles[collection.id] ?? { color: collection.color, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize };
-    return style.color !== collection.color || (style.nameFont ?? null) !== (collection.nameFont ?? null) || style.titleFontSize !== collection.titleFontSize || (style.cardFont ?? null) !== (collection.cardFont ?? null) || style.cardFontSize !== collection.cardFontSize ? [[collection.id, style]] : [];
+    const style = draftCollectionStyles[collection.id] ?? { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize };
+    return style.color !== collection.color || style.font !== collection.font || (style.nameFont ?? null) !== (collection.nameFont ?? null) || style.titleFontSize !== collection.titleFontSize || (style.cardFont ?? null) !== (collection.cardFont ?? null) || style.cardFontSize !== collection.cardFontSize ? [[collection.id, style]] : [];
   }));
   const isDirty = JSON.stringify(draftPreferences) !== JSON.stringify(preferences) || JSON.stringify(draftProfile) !== JSON.stringify(profile) || Object.keys(collectionChanges).length > 0;
   const discardChanges = () => {
     setDraftPreferences(preferences);
     setDraftProfile(profile);
-    setDraftCollectionStyles(Object.fromEntries(collections.map(collection => [collection.id, { color: collection.color, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }])));
+    setDraftCollectionStyles(Object.fromEntries(collections.map(collection => [collection.id, { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }])));
     onAppearancePreview(null);
   };
   const maskEmail = (value: string) => {
@@ -80,6 +87,25 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
     setProfile(draftProfile);
     onCollectionsUpdate(collectionChanges);
     onNotify('Settings saved', 'success');
+  };
+  const changePassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!supabase || passwordBusy) return;
+    if (newPassword !== confirmNewPassword) { setPasswordMessage('New passwords do not match.'); return; }
+    setPasswordBusy(true);
+    setPasswordMessage('');
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPassword });
+      if (signInError) { setPasswordMessage('Current password is incorrect.'); return; }
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) { setPasswordMessage('Could not update the password. Please try again.'); return; }
+      setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword('');
+      setPasswordMessage('Your password has been updated.');
+    } catch {
+      setPasswordMessage('Could not reach the authentication service. Please try again.');
+    } finally {
+      setPasswordBusy(false);
+    }
   };
   const createBackup = (): DataBackup => ({ version: 1, exportedAt: new Date().toISOString(), collections: collections.map(collection => ({ ...collection, ...(draftCollectionStyles[collection.id] ?? {}) })), preferences: draftPreferences, profile: draftProfile, widgets, searchPosition });
   const exportData = () => {
@@ -122,15 +148,16 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
         <div className="settings-section"><div className="settings-title">BACKGROUND</div><div className="settings-choice">{(['solid','gradient','image'] as const).map(mode => <button key={mode} className={draftPreferences.background === mode ? 'chosen' : ''} onClick={() => setDraftPreferences(v => { const next = { ...v, background: mode }; onAppearancePreview(next); return next; })}>{mode === 'solid' ? 'Solid' : mode === 'gradient' ? 'Blend' : 'Image'}</button>)}</div>
           {draftPreferences.background !== 'image' ? <div className="background-colors"><div><span>{draftPreferences.background === 'gradient' ? 'Color one' : 'Color'}</span><ColorPicker label={draftPreferences.background === 'gradient' ? 'First background color' : 'Background color'} value={draftPreferences.color1} onChange={color => setDraftPreferences(v => { const next = { ...v, color1: color }; onAppearancePreview(next); return next; })}/></div>{draftPreferences.background === 'gradient' && <div><span>Color two</span><ColorPicker label="Second background color" value={draftPreferences.color2} onChange={color => { const next = { ...draftPreferences, color2: color }; setDraftPreferences(next); onAppearancePreview(next); }}/></div>}</div> : <WallpaperPicker urls={draftPreferences.wallpaperUrls} selectedUrl={draftPreferences.image} onChange={wallpaperUrls => setDraftPreferences(current => { const next = { ...current, wallpaperUrls }; onAppearancePreview(next); return next; })} onSelect={url => setDraftPreferences(current => { const next = { ...current, image: url, imagePath: undefined, background: 'image' as const }; onAppearancePreview(next); return next; })} onDelete={setWallpaperToDelete}/>}
         </div>
-        <div className="settings-section"><div className="settings-title">FONT</div><small className="settings-help">Preview a typeface, then select it to apply across Keeper.</small><FontSelector value={draftPreferences.font} options={FONT_OPTIONS} size={draftPreferences.size} onSizeChange={size => { const next = { ...draftPreferences, size }; setDraftPreferences(next); onAppearancePreview(next); }} onChange={font => setDraftPreferences(v => { const next = { ...v, font }; onAppearancePreview(next); return next; })}/><button className="text-button" onClick={() => setConfirmReset(true)}>Reset appearance</button></div>
+        <div className="settings-section"><div className="settings-title">FONT</div><small className="settings-help">Preview a typeface, then select it to apply across Keeper.</small><FontSelector value={draftPreferences.font} options={FONT_OPTIONS} size={draftPreferences.size} onSizeChange={size => { const next = { ...draftPreferences, size }; setDraftPreferences(next); onAppearancePreview(next); }} onChange={font => setDraftPreferences(v => { const next = { ...v, font }; onAppearancePreview(next); return next; })}/><button type="button" className="settings-reset-button" onClick={() => setConfirmReset(true)}><RotateCcw size={14}/> Reset appearance</button></div>
       </div> : section === 'collections' ? <div className="settings-content"><div className="settings-section collection-settings">
         <div className="settings-title">COLLECTION STYLE</div>
         {collections.length ? <>
           <label className="collection-setting-label">Choose collection<select className="field settings-input" value={selectedCollection?.id ?? ''} onChange={e => setSelectedCollectionId(e.target.value)}>{collections.map(collection => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select></label>
           {selectedCollection && <>
             <div className="collection-setting-label"><span>Collection color</span><ColorPicker label="Collection color" value={selectedStyle!.color} fallbackColor={draftPreferences.accent} allowNone onChange={color => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], color } }))}/></div>
-            <div className="collection-setting-label"><span>Collection name font</span><small className="settings-help">Controls this collection’s label in the top navigation.</small><FontSelector value={selectedStyle!.nameFont ?? selectedStyle!.font ?? draftPreferences.font} options={FONT_OPTIONS} onChange={font => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], nameFont: font } }))}/><button type="button" className="text-button" onClick={() => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], nameFont: null } }))}>Use global font</button></div>
-            <div className="collection-setting-label"><span>Collection title size</span><small className="settings-help">Controls this collection’s name in the top navigation.</small><FontSizeSelector label="Collection title size" value={selectedStyle!.titleFontSize ?? draftPreferences.size} onChange={(titleFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], titleFontSize } }))}/></div><div className="collection-setting-label"><span>Website card font</span><small className="settings-help">Controls text on cards in this collection.</small><FontSelector value={selectedStyle!.cardFont ?? selectedStyle!.font ?? draftPreferences.font} options={FONT_OPTIONS} onChange={font => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: font } }))}/><button type="button" className="text-button" onClick={() => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: null } }))}>Use global font</button><FontSizeSelector label="Website card text size" value={selectedStyle!.cardFontSize ?? draftPreferences.size} onChange={(cardFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFontSize } }))}/></div>
+            <details className="collection-font-dropdown"><summary>Collection Title</summary><small className="settings-help">Controls this collection’s label in the top navigation.</small><FontSelector value={selectedStyle!.nameFont ?? selectedStyle!.font ?? draftPreferences.font} options={FONT_OPTIONS} onChange={font => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], nameFont: font } }))}/><button type="button" className="text-button" onClick={() => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], nameFont: null } }))}>Use global font</button><div className="collection-setting-label"><span>Collection title size</span><small className="settings-help">Controls this collection’s name in the top navigation.</small><FontSizeSelector label="Collection title size" value={selectedStyle!.titleFontSize ?? draftPreferences.size} onChange={(titleFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], titleFontSize } }))}/></div></details>
+            <details className="collection-font-dropdown"><summary>Website Cards</summary><small className="settings-help">Controls text on cards in this collection.</small><FontSelector value={selectedStyle!.cardFont ?? selectedStyle!.font ?? draftPreferences.font} options={FONT_OPTIONS} onChange={font => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: font } }))}/><button type="button" className="text-button" onClick={() => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFont: null } }))}>Use global font</button><FontSizeSelector label="Website card text size" value={selectedStyle!.cardFontSize ?? draftPreferences.size} onChange={(cardFontSize: FontSize) => setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], cardFontSize } }))}/></details>
+            <button type="button" className="settings-reset-button" onClick={() => setConfirmResetCollection(true)}><RotateCcw size={14}/> Reset collection</button>
           </>}
         </> : <p className="collection-settings-empty">Create a collection first to set its color and font.</p>}
       </div></div> : section === 'profile' ? <div className="settings-content profile-content"><div className="settings-section profile-settings">
@@ -146,6 +173,17 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
           {!isAuthenticated && <ul className="profile-benefits"><li>Cloud backup for your collections, websites, and settings</li><li>Access your saved collections from any signed-in device</li><li>Automatic syncing, with sync status and a manual sync option</li></ul>}
         </div>
         <small className="settings-help">Your display name and app data are saved in this browser.</small>
+        {isAuthenticated && <details className="profile-password-disclosure">
+          <summary>Change password</summary>
+          <form className="profile-password-form" onSubmit={changePassword}>
+          <label className="collection-setting-label">Current password<input className="field settings-input" type="password" autoComplete="current-password" required maxLength={1024} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}/></label>
+          <label className="collection-setting-label">New password<input className="field settings-input" type="password" autoComplete="new-password" required minLength={8} maxLength={1024} value={newPassword} onChange={e => setNewPassword(e.target.value)}/></label>
+          <label className="collection-setting-label">Confirm new password<input className="field settings-input" type="password" autoComplete="new-password" required minLength={8} maxLength={1024} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}/></label>
+          <small className="settings-help">Use at least 8 characters.</small>
+          {passwordMessage && <p className="profile-password-message" role="status">{passwordMessage}</p>}
+            <button className="primary-button profile-auth-button" type="submit" disabled={passwordBusy || !supabase}>{passwordBusy ? 'Updating…' : 'Update password'}</button>
+          </form>
+        </details>}
       </div></div> : <div className="settings-content"><div className="settings-section data-settings">
         {/* Cloud Backup On/Off Feature Toggle */}
         <div className="settings-title">CLOUD BACKUP & MULTI-DEVICE SYNC</div>
@@ -249,6 +287,7 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
       {isDirty && <div className="settings-actions"><button className="cancel-button" onClick={discardChanges}>Discard changes</button><button className="primary-button" onClick={saveChanges}>Save <Check size={15}/></button></div>}
     </section>
       {confirmReset && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && setConfirmReset(false)}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-description"><span className="confirm-icon"><RotateCcw size={19}/></span><div className="modal-eyebrow">RESET APPEARANCE</div><h2 id="reset-title">Restore default appearance?</h2><p id="reset-description">Your current colors, background, font, and UI size will be replaced with the defaults.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setConfirmReset(false)}>Cancel</button><button className="confirm-delete-button" onClick={() => { setDraftPreferences(defaultPreferences); onAppearancePreview(defaultPreferences); setConfirmReset(false); }}><RotateCcw size={15}/> Reset appearance</button></div></section></div>}
+      {confirmResetCollection && selectedCollection && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && setConfirmResetCollection(false)}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-collection-title" aria-describedby="reset-collection-description"><span className="confirm-icon"><RotateCcw size={19}/></span><div className="modal-eyebrow">RESET COLLECTION</div><h2 id="reset-collection-title">Reset “{selectedCollection.name}”?</h2><p id="reset-collection-description">This collection’s font, sizes, and color will be set to the current Appearance values.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setConfirmResetCollection(false)}>Cancel</button><button className="confirm-delete-button" onClick={() => { setDraftCollectionStyles(value => ({ ...value, [selectedCollection.id]: { ...value[selectedCollection.id], color: draftPreferences.accent, font: draftPreferences.font, nameFont: draftPreferences.font, titleFontSize: draftPreferences.size, cardFont: draftPreferences.font, cardFontSize: draftPreferences.size } })); setConfirmResetCollection(false); }}><RotateCcw size={15}/> Reset collection</button></div></section></div>}
       {confirmWipeLocal && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && !wiping && setConfirmWipeLocal(false)}><section className="confirm-dialog local-wipe-dialog" role="alertdialog" aria-modal="true" aria-labelledby="wipe-title" aria-describedby="wipe-description"><span className="confirm-icon"><Trash2 size={22}/></span><div className="modal-eyebrow">PERMANENT DATA DELETION</div><h2 id="wipe-title">Delete all Keeper data?</h2><p id="wipe-description"><strong>This permanently deletes your collections, websites, profile details, appearance settings, dashboard widgets, and layout position from this browser{isAuthenticated ? ' and your signed-in cloud account' : ''}.</strong> The only data kept will be saved checkpoints, which you can use to restore a backup. If you have no checkpoint, your deleted data cannot be recovered.</p><p className="wipe-cloud-warning">This action cannot be undone. Export a backup or create a checkpoint before continuing if you may need this data.</p><div className="modal-actions"><button className="cancel-button" disabled={wiping} onClick={() => setConfirmWipeLocal(false)}>Keep my data</button><button className="confirm-delete-button" disabled={wiping} onClick={async () => { setWiping(true); await onWipeLocalData(); setWiping(false); }}><Trash2 size={15}/> {wiping ? 'Deleting…' : 'Delete all data'}</button></div></section></div>}
     {preview && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && setPreview(null)}><section className="confirm-dialog checkpoint-preview" role="dialog" aria-modal="true" aria-labelledby="checkpoint-preview-title"><div className="modal-eyebrow">CHECKPOINT PREVIEW · {new Date(preview.exportedAt).toLocaleString()}</div><h2 id="checkpoint-preview-title">{preview.collections.length} collections</h2><ul>{preview.collections.map(collection => <li key={collection.id}><strong>{collection.name}</strong><span>{collection.sites.length} websites</span></li>)}</ul><p>This is a temporary preview. Your current data has not changed.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setPreview(null)}>Close preview</button><button className="primary-button" onClick={() => setConfirmRestore(preview)}><RotateCcw size={15}/> Restore checkpoint</button></div></section></div>}
     {confirmRestore && <div className="overlay confirm-overlay" onMouseDown={event => event.target === event.currentTarget && setConfirmRestore(null)}><section className="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="restore-checkpoint-title" aria-describedby="restore-checkpoint-description"><span className="confirm-icon"><RotateCcw size={19}/></span><div className="modal-eyebrow">RESTORE CHECKPOINT</div><h2 id="restore-checkpoint-title">Restore this checkpoint?</h2><p id="restore-checkpoint-description">This will replace your current collections, appearance, and profile with the saved checkpoint.</p><div className="modal-actions"><button className="cancel-button" onClick={() => setConfirmRestore(null)}>Cancel</button><button className="primary-button" onClick={() => restoreCheckpoint(confirmRestore)}><RotateCcw size={15}/> Restore checkpoint</button></div></section></div>}
