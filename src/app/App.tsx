@@ -116,7 +116,7 @@ function App() {
   useEffect(() => { try { localStorage.setItem('keeper-profile', JSON.stringify(profile)); } catch { /* Keep profile changes in memory if storage is unavailable. */ } }, [profile]);
   useEffect(() => { checkpointSnapshot.current = checkpoints; try { localStorage.setItem('keeper-checkpoints', JSON.stringify(checkpoints)); } catch { /* Keep checkpoints in memory if storage is unavailable. */ } }, [checkpoints]);
   useEffect(() => { try { localStorage.setItem('keeper-widgets', JSON.stringify(widgets)); } catch { /* Keep widgets in memory if storage is unavailable. */ } }, [widgets]);
-  const documentSnapshot = useCallback(() => ({ collections, preferences, profile, widgets, checkpoints, searchPosition }), [collections, preferences, profile, widgets, checkpoints, searchPosition]);
+  const documentSnapshot = useCallback(() => ({ collections, preferences, profile, widgets, checkpoints, searchPosition, wallpaperUrls: preferences.wallpaperUrls }), [collections, preferences, profile, widgets, checkpoints, searchPosition]);
   useEffect(() => {
     let active = true;
     const path = displayedPreferences.imagePath;

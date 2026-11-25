@@ -205,6 +205,7 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
           ...(data?.color2 !== undefined && { color2: data.color2 }),
           ...(data?.image !== undefined && { image: data.image }),
           ...(data?.imagePath !== undefined && { imagePath: data.imagePath }),
+          ...(data?.wallpaperUrls !== undefined && { wallpaperUrls: data.wallpaperUrls }),
           ...(data?.font !== undefined && { font: data.font }),
           ...(data?.size !== undefined && { size: data.size }),
         },

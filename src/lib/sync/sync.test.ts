@@ -28,6 +28,7 @@ const initialDoc: KeeperDocument = {
     color1: '#08090b',
     color2: '#242832',
     image: '',
+    wallpaperUrls: [],
     font: 'Roboto',
     size: 16,
   },

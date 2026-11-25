@@ -55,7 +55,8 @@ function validPreferences(value: unknown): value is Preferences {
   const imagePathOk = value.imagePath === undefined || value.imagePath === '' || typeof value.imagePath === 'string' && value.imagePath.length <= 300 && !value.imagePath.startsWith('/') && !value.imagePath.includes('..');
   // Accept numeric strings for size (database returns text columns as strings).
   const sizeNum = typeof value.size === 'string' ? Number(value.size) : value.size;
-  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && imagePathOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
+  const wallpaperUrlsOk = Array.isArray(value.wallpaperUrls) && value.wallpaperUrls.length <= 25 && value.wallpaperUrls.every(url => typeof url === 'string' && url.length <= 2048 && /^https:\/\//i.test(url));
+  return color(value.accent) && ['solid', 'gradient', 'image'].includes(String(value.background)) && color(value.color1) && color(value.color2) && imageOk && imagePathOk && wallpaperUrlsOk && FONT_OPTIONS.includes(value.font as typeof FONT_OPTIONS[number]) && (FONT_SIZES.some(size => size.value === sizeNum) || ['small', 'medium', 'large'].includes(String(value.size)));
 }
 
 function validProfile(value: unknown): value is UserProfile {
@@ -95,7 +96,7 @@ export function normalizeDocument(value: unknown): KeeperDocument | null {
 
   // Coerce preferences.size from string to number if needed.
   const rawPreferences = record(value.preferences)
-    ? { ...value.preferences, image: typeof value.preferences.image === 'string' && /^https:\/\//i.test(value.preferences.image) && value.preferences.image.length <= 2048 ? value.preferences.image : '', size: normalizeFontSize(value.preferences.size) }
+    ? { ...value.preferences, image: typeof value.preferences.image === 'string' && /^https:\/\//i.test(value.preferences.image) && value.preferences.image.length <= 2048 ? value.preferences.image : '', wallpaperUrls: (Array.isArray(value.wallpaperUrls) ? value.wallpaperUrls : Array.isArray(value.preferences.wallpaperUrls) ? value.preferences.wallpaperUrls : []).filter((url): url is string => typeof url === 'string' && url.length <= 2048 && /^https:\/\//i.test(url)).slice(0, 25), size: normalizeFontSize(value.preferences.size) }
     : value.preferences;
 
   const rawCheckpoints = Array.isArray(value.checkpoints)
