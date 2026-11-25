@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowUpRight, CalendarDays, Check, Clock3, Command, Compass, ExternalLink, FolderPlus, Home, Link2, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Command, Compass, ExternalLink, FolderPlus, Home, Link2, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, Modifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -35,6 +35,7 @@ const displayNameFromEmail = (email?: string) => {
 function App() {
   const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
   const [collections, setCollections] = useState<Collection[]>(readCollections);
+  const [collectionPageIndex, setCollectionPageIndex] = useState(0);
   const [checkpoints, setCheckpoints] = useState<DataBackup[]>(() => { try { const value: unknown = JSON.parse(localStorage.getItem('keeper-checkpoints') || '[]'); return Array.isArray(value) ? value.filter(isBackup).slice(0, 5) : []; } catch { return []; } });
   const [syncState, setSyncState] = useState<'local' | 'syncing' | 'synced' | 'error'>('local');
   const [documentReady, setDocumentReady] = useState(false);
@@ -107,6 +108,11 @@ function App() {
   }, [publishGuides]);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const current = collections.find(c => c.id === active) ?? null;
+  const collectionPageCount = Math.max(1, Math.ceil((collections.length + 1) / 6));
+  const collectionPage = Math.min(collectionPageIndex, collectionPageCount - 1);
+  const visibleCollections = collections.slice(collectionPage * 6, collectionPage * 6 + 6);
+  const showAddCollection = collectionPage === Math.floor(collections.length / 6);
+  useLayoutEffect(() => { setCollectionPageIndex(index => Math.min(index, collectionPageCount - 1)); }, [collectionPageCount]);
   const allSites = useMemo(() => collections.flatMap(c => c.sites.map(site => ({ ...site, collection: c.name }))), [collections]);
   const results = useMemo(() => search.trim() ? allSites.filter(s => `${s.name} ${s.url} ${s.collection}`.toLowerCase().includes(search.toLowerCase())) : [], [allSites, search]);
 
@@ -478,14 +484,18 @@ function App() {
 
   return <DndContext sensors={sensors} modifiers={[widgetDragModifier]} collisionDetection={args => { if (args.active.data.current?.type === 'widget') return []; const collisions = pointerWithin(args); return collisions.length ? collisions : closestCenter(args); }} onDragStart={({ active: dragged }) => setDraggedSite(collections.flatMap(c => c.sites).find(site => site.id === String(dragged.id)) ?? null)} onDragEnd={event => { handleDragEnd(event); setDraggedSite(null); clearGuides(); }} onDragCancel={() => { setDraggedSite(null); clearGuides(); }}><main ref={appRef} className="app" onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}>
     <header className="topbar dashboard-topbar">
-      <button className={`nav-home ${!current ? 'selected' : ''}`} onClick={() => setActive(null)} aria-current={!current ? 'page' : undefined}><Home size={17}/><span>Home</span></button>
-      <nav className="collections-nav" aria-label="Collections">
-        <SortableContext items={collections.map(c => `collection-tab:${c.id}`)} strategy={horizontalListSortingStrategy}>
-          {collections.map(c => <CollectionTab key={c.id} collection={c} active={active === c.id} accent={preferences.accent} onSelect={() => setActive(active === c.id ? null : c.id)} onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, collection: c }); }}/>) }
-        </SortableContext>
-        <button className="add-collection" onClick={() => openCollectionModal()}><Plus size={15} /> <span>New collection</span></button>
-      </nav>
-      <div className="top-actions"><button className="shortcut-hint" onClick={() => setHelpOpen(true)} title="Keyboard shortcuts (Ctrl+/)"><kbd>Ctrl</kbd><span style={{opacity:.5,fontSize:9}}>/</span> Shortcuts</button><button className="avatar" aria-label="Open profile settings" onClick={() => { setSettingsSection('profile'); setModal('settings'); }}>{avatarUrl ? <img src={avatarUrl} alt=""/> : profile.name.trim().charAt(0).toUpperCase() || 'K'}</button></div>
+      <div className="collections-strip">
+        <button className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`} aria-label="Previous 6 collections" title="Previous 6 collections" disabled={collectionPage === 0} onClick={() => setCollectionPageIndex(page => Math.max(0, page - 1))}><ChevronLeft size={17}/></button>
+        <div className="collection-box">
+          <nav className="collections-nav" aria-label="Collections">
+            <SortableContext items={visibleCollections.map(c => `collection-tab:${c.id}`)} strategy={horizontalListSortingStrategy}>
+              {visibleCollections.map(c => <CollectionTab key={c.id} collection={c} active={active === c.id} accent={preferences.accent} onSelect={() => setActive(active === c.id ? null : c.id)} onContextMenu={e => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, collection: c }); }}/>) }
+            </SortableContext>
+            {showAddCollection && <button className="add-collection" style={{ gridColumn: (collections.length % 6) + 1 }} aria-label="New collection" title="New collection" onClick={() => openCollectionModal()}><Plus size={15}/></button>}
+          </nav>
+        </div>
+        <button className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`} aria-label="Next 6 collections" title="Next 6 collections" disabled={collectionPage >= collectionPageCount - 1} onClick={() => setCollectionPageIndex(page => Math.min(collectionPageCount - 1, page + 1))}><ChevronRight size={17}/></button>
+      </div>
     </header>
 
     {!current ? <section className="home dashboard-home">
@@ -494,10 +504,14 @@ function App() {
       <div className="hero-copy"><div className={`search-wrap search-draggable ${searchDragging ? 'is-dragging' : ''}`} style={{ transform: `translate3d(${searchPosition.x}px, ${searchPosition.y}px, 0)` }} onPointerDown={startSearchDrag} onPointerMove={moveSearch} onPointerUp={endSearchDrag} onPointerCancel={endSearchDrag}><Search size={19} className="search-icon"/><input value={search} onChange={e => setSearch(e.target.value)} onFocus={() => setQueryOpen(true)} onKeyDown={e => { if (e.key === 'Enter' && search.trim()) { window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank'); } }} placeholder="Search the web or your saved places..."/><kbd><Command size={11}/> K</kbd><button className="search-go" aria-label="Search" onClick={() => search.trim() && window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><ArrowUpRight size={17}/></button>
         {queryOpen && search.trim() && <div className="search-results">{results.slice(0, 5).map(s => <a key={s.id} href={`https://${s.url}`} className="search-result"><img src={faviconFor(s.url)}/><span>{s.name}</span><small>{s.collection}</small></a>)}<button className="web-result" onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><Search size={14}/> Search the web for “{search}”</button></div>}</div>
       </div>
-      <div className="dashboard-add-controls" onClick={event => event.stopPropagation()}><button className="settings-fab dashboard-add-fab" aria-label="Add widget" title="Add widget" aria-expanded={widgetPickerOpen} onClick={() => setWidgetPickerOpen(open => !open)}><Plus size={19}/></button>{widgetPickerOpen && <div className="widget-picker"><div className="widget-picker-heading">ADD A WIDGET</div><button onClick={() => addWidget('clock')}><Clock3 size={16}/> Clock</button><button onClick={() => addWidget('calendar')}><CalendarDays size={16}/> Calendar</button></div>}</div>
-      <button className="settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
+      <div className="dashboard-footer-controls">
+        <div className="dashboard-add-controls" onClick={event => event.stopPropagation()}><button className="settings-fab dashboard-add-fab" aria-label="Add widget" title="Add widget" aria-expanded={widgetPickerOpen} onClick={() => setWidgetPickerOpen(open => !open)}><Plus size={19}/></button>{widgetPickerOpen && <div className="widget-picker"><div className="widget-picker-heading">ADD A WIDGET</div><button onClick={() => addWidget('clock')}><Clock3 size={16}/> Clock</button><button onClick={() => addWidget('calendar')}><CalendarDays size={16}/> Calendar</button></div>}</div>
+        <button className="dashboard-shortcuts-link" title="Open keyboard shortcuts" onClick={() => setHelpOpen(true)}><span>Keyboard shortcuts</span><kbd>Ctrl</kbd><span className="shortcuts-plus">+</span><kbd>/</kbd></button>
+        <button className="settings-fab dashboard-settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
+      </div>
     </section> : <section className="collection-page" style={{ '--collection-color': current.color || preferences.accent, '--collection-font': current.cardFont ? `'${current.cardFont}', sans-serif` : current.font ? `'${current.font}', sans-serif` : 'var(--ui-font)', '--card-font-size': `${current.cardFontSize ?? preferences.size}px` } as CSSProperties}>
       <CollectionGrid collection={current} onContextMenu={(site, e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, site }); }} onMenu={(site, rect) => setMenu({ x: rect.right, y: rect.bottom, site })} onAdd={() => openSiteModal()}/>
+      <button className="footer-home collection-dashboard-home" onClick={() => setActive(null)}><Home size={15}/><span>Home</span></button>
       <button className="settings-fab collection-settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
     </section>}
 
