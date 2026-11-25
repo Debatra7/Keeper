@@ -22,7 +22,7 @@ import type { DashboardWidget } from '../features/dashboard/DashboardWidgets';
 import { getAlignmentTargets, snapToAlignment } from '../features/dashboard/alignment';
 import type { AlignmentGuide } from '../features/dashboard/alignment';
 import { AuthScreen } from '../features/auth/AuthScreen';
-import { readRemoteDocument, supabase, writeRemoteDocument } from '../lib/supabase';
+import { clearRemoteKeeperData, readRemoteDocument, supabase, writeRemoteDocument } from '../lib/supabase';
 import { isBackup, normalizeDocument } from '../lib/validation';
 
 type Menu = { x: number; y: number; site?: Site; collection?: Collection } | null;
@@ -400,6 +400,28 @@ function App() {
   const dismissOnboarding = () => { setOnboardingOpen(false); try { localStorage.setItem('keeper-welcome-seen', 'true'); } catch { /* Keep the welcome dismissed for this session. */ } };
   const notify = (message: string, tone: Toast['tone'] = 'success') => setToasts(items => [...items, { id: Date.now(), message, tone }]);
   const importBackup = (backup: DataBackup) => { const document = normalizeDocument({ collections: backup.collections, preferences: backup.preferences, profile: backup.profile, widgets: backup.widgets ?? [], searchPosition: backup.searchPosition, checkpoints }); if (!document) { notify('That backup contains invalid data', 'error'); return; } setCollections(document.collections); setPreferences(document.preferences); setProfile(document.profile); setWidgets(document.widgets); setSearchPosition(document.searchPosition); searchPositionRef.current = document.searchPosition; notify('Backup imported successfully', 'success'); };
+  const wipeAllKeeperData = async () => {
+    try {
+      let preservedCheckpoints = checkpoints;
+      if (session?.user.id) {
+        if (!supabase) throw new Error('Cloud sync is unavailable');
+        const remote = await readRemoteDocument(session.user.id);
+        preservedCheckpoints = [...new Map([...(remote?.document.checkpoints ?? []), ...checkpoints].map(item => [item.exportedAt, item])).values()]
+          .sort((a, b) => Date.parse(a.exportedAt) - Date.parse(b.exportedAt)).slice(-5);
+        const avatarPath = remote?.document.profile.avatarPath ?? profile.avatarPath;
+        if (avatarPath) {
+          const { error } = await supabase.storage.from('profile-pictures').remove([avatarPath]);
+          if (error) throw error;
+        }
+        remoteRevision.current = await clearRemoteKeeperData(session.user.id, preservedCheckpoints);
+      }
+      localStorage.setItem('keeper-checkpoints', JSON.stringify(preservedCheckpoints));
+      for (const key of ['keeper-data', 'keeper-preferences', 'keeper-profile', 'keeper-widgets', 'keeper-search-position', 'keeper-welcome-seen']) localStorage.removeItem(key);
+      window.location.reload();
+    } catch {
+      notify('Could not complete deletion. Local data was kept; please retry when connected. A cloud profile picture may already have been removed.', 'error');
+    }
+  };
   const addWidget = (type: DashboardWidget['type']) => { const width = type === 'calendar' ? 228 : 180; const height = type === 'calendar' ? 230 : 130; const areaWidth = document.querySelector('.dashboard-widgets')?.clientWidth ?? window.innerWidth * .898; const columns = Math.max(1, Math.floor(areaWidth / 250)); const index = widgets.length; setWidgets(items => [...items, { id: createId(), type, width, height, x: index % columns * 250, y: Math.floor(index / columns) * 245 }]); setWidgetPickerOpen(false); notify(`${type === 'clock' ? 'Clock' : 'Calendar'} widget added`, 'success'); };
   const deleteCollection = (collection: Collection) => {
     setCollections(items => items.filter(c => c.id !== collection.id));
@@ -482,7 +504,7 @@ function App() {
     {modal && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && (appearancePreview && modal === 'settings' ? (setAppearancePreview(null), setModal(null)) : setModal(null))}><div className={`modal ${modal === 'settings' ? 'settings-modal' : ''}`}><button className="modal-close" onClick={() => { if (modal === 'settings') setAppearancePreview(null); setModal(null); }} aria-label="Close"><X size={17}/></button>
       {modal === 'collection' && <><span className="modal-icon"><FolderPlus size={20}/></span><div className="modal-eyebrow">{editingCollection ? 'UPDATE COLLECTION' : 'A NEW LITTLE CORNER'}</div><h2>{editingCollection ? 'Rename collection' : 'Create a collection'}</h2><p>{editingCollection ? 'Choose a name that feels right.' : 'Give your favorite places a place of their own.'}</p><label className="field-label">COLLECTION NAME</label><input className="field" autoFocus placeholder="e.g. Weekend reading" value={newCollection} onChange={e => setNewCollection(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveCollection()}/><label className="field-label">COLLECTION COLOR</label><ColorPicker label="Collection color" value={newCollectionColor} fallbackColor={preferences.accent} allowNone onChange={setNewCollectionColor}/><div className="modal-actions"><button className="cancel-button" onClick={() => { setEditingCollection(null); setModal(null); }}>Cancel</button><button className="primary-button" onClick={saveCollection}>{editingCollection ? 'Save changes' : 'Create collection'} <ArrowUpRight size={15}/></button></div></>}
       {modal === 'site' && <><span className="modal-icon"><Link2 size={20}/></span><div className="modal-eyebrow">{editing ? 'TIDY UP YOUR COLLECTION' : `ADD TO ${current?.name.toUpperCase()}`}</div><h2>{editing ? 'Edit website' : 'Save a website'}</h2><p>A shortcut to somewhere you love.</p><label className="field-label">DISPLAY NAME</label><input className="field" autoFocus placeholder="e.g. Are.na" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><label className="field-label">WEBSITE ADDRESS</label><input className="field" placeholder="e.g. are.na" value={newUrl} onChange={e => setNewUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveSite()}/><div className="modal-actions"><button className="cancel-button" onClick={() => setModal(null)}>Cancel</button><button className="primary-button" onClick={saveSite}>{editing ? 'Save changes' : 'Save website'} <ArrowUpRight size={15}/></button></div></>}
-      {modal === 'settings' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onAppearancePreview={setAppearancePreview} collections={collections} onCollectionsUpdate={updates => setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })))} onNotify={notify} initialSection={settingsSection} initialCollectionId={settingsCollectionId} profile={profile} setProfile={setProfile} onImport={importBackup} widgets={widgets} searchPosition={searchPosition} checkpoints={checkpoints} onCheckpointsChange={setCheckpoints} userEmail={session?.user.email ?? ''} syncState={syncState} avatarUrl={avatarUrl} onAvatarUpload={uploadAvatar} onAvatarRemove={removeAvatar} onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }} onSignIn={() => { setModal(null); setAuthModalOpen(true); }}/ >}
+      {modal === 'settings' && <SettingsPanel preferences={preferences} setPreferences={setPreferences} onAppearancePreview={setAppearancePreview} collections={collections} onCollectionsUpdate={updates => setCollections(items => items.map(collection => ({ ...collection, ...(updates[collection.id] ?? {}) })))} onNotify={notify} initialSection={settingsSection} initialCollectionId={settingsCollectionId} profile={profile} setProfile={setProfile} onImport={importBackup} onWipeLocalData={wipeAllKeeperData} widgets={widgets} searchPosition={searchPosition} checkpoints={checkpoints} onCheckpointsChange={setCheckpoints} userEmail={session?.user.email ?? ''} syncState={syncState} avatarUrl={avatarUrl} onAvatarUpload={uploadAvatar} onAvatarRemove={removeAvatar} onSignOut={async () => { const { error } = await supabase!.auth.signOut(); if (error) notify('Could not sign out. Please try again.', 'error'); else setModal(null); }} onSignIn={() => { setModal(null); setAuthModalOpen(true); }}/ >}
 
     </div></div>}
     {onboardingOpen && <div className="overlay" onMouseDown={e => e.target === e.currentTarget && dismissOnboarding()}><section className="modal onboarding-modal" role="dialog" aria-modal="true" aria-labelledby="onboarding-title"><button className="modal-close" onClick={dismissOnboarding} aria-label="Close"><X size={17}/></button><div className="modal-eyebrow">WELCOME TO KEEPER</div><h2 id="onboarding-title">Your favorite places, all in one spot.</h2><p>Make a personal dashboard for the websites you visit most.</p><ul className="onboarding-features"><li><FolderPlus size={17}/><span><strong>Collections</strong>Group websites by work, interests, or anything you like.</span></li><li><Link2 size={17}/><span><strong>Website shortcuts</strong>Save a name and address, then open it from your collection.</span></li><li><Search size={17}/><span><strong>Quick search</strong>Find saved websites or search the web from the home screen.</span></li><li><Settings size={17}/><span><strong>Make it yours</strong>Adjust the look, add clock or calendar widgets, and back up your data in settings.</span></li></ul><div className="modal-actions"><button className="primary-button" onClick={dismissOnboarding}>Get started <ArrowUpRight size={15}/></button></div></section></div>}
@@ -496,3 +518,4 @@ function App() {
 }
 
 export default App;
+

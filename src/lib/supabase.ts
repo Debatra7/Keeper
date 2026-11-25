@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { normalizeDocument, type KeeperDocument } from './validation';
+import type { DataBackup } from '../features/settings/SettingsPanel';
 
 const url = import.meta.env.VITE_SUPABASE_URL;
 const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -27,4 +28,12 @@ export async function writeRemoteDocument(_userId: string, document: KeeperDocum
   if (error) throw error;
   if (data === null) throw new Error('Sync conflict: document changed on another device');
   return data as number;
+}
+
+export async function clearRemoteKeeperData(_userId: string, checkpoints: DataBackup[]) {
+  if (!supabase) throw new Error('Cloud sync is unavailable');
+  const { data, error } = await supabase.rpc('clear_keeper_data', { p_checkpoints: checkpoints });
+  if (error) throw error;
+  if (typeof data !== 'number' || !Number.isSafeInteger(data)) throw new Error('Cloud data could not be cleared');
+  return data;
 }
