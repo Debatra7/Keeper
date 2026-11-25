@@ -267,8 +267,20 @@ function App() {
     window.clearTimeout(syncTimer.current);
     syncTimer.current = window.setTimeout(async () => {
       setSyncState('syncing');
-      try { remoteRevision.current = (await writeRemoteDocument(userId, JSON.parse(snapshot), remoteRevision.current ?? null)) ?? null; lastSyncedSnapshot.current = snapshot; dirtyDocument.current = false; setSyncState('synced'); }
-      catch { setSyncState('error'); }
+      try {
+        remoteRevision.current = (await writeRemoteDocument(userId, JSON.parse(snapshot), remoteRevision.current ?? null)) ?? null;
+        lastSyncedSnapshot.current = snapshot;
+        dirtyDocument.current = false;
+        setSyncState('synced');
+      } catch {
+        // Keep the local edits, refresh the remote revision, and let the next
+        // snapshot attempt write against the current version.
+        try {
+          const latest = await readRemoteDocument(userId);
+          remoteRevision.current = latest?.revision ?? null;
+        } catch { /* The next local edit or reload will retry the read. */ }
+        setSyncState('error');
+      }
     }, 500);
     return () => window.clearTimeout(syncTimer.current);
   }, [session?.user.id, documentReady, documentSnapshot]);

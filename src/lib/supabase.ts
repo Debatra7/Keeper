@@ -8,18 +8,17 @@ export const supabase = url && key ? createClient(url, key, {
   auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true },
 }) : null;
 
-export async function readRemoteDocument(userId: string) {
+export async function readRemoteDocument(_userId: string) {
   if (!supabase) return null;
-  const [{ data: state, error }, { data: rawDocument, error: documentError }] = await Promise.all([
-    supabase.from('keeper_sync_state').select('revision').eq('user_id', userId).maybeSingle(),
-    supabase.rpc('get_keeper_document'),
-  ]);
+  const { data, error } = await supabase.rpc('get_keeper_document');
   if (error) throw error;
-  if (documentError) throw documentError;
-  if (!state) return null;
+  if (data === null) return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Remote Keeper document is invalid');
+  const { revision, ...rawDocument } = data as Record<string, unknown>;
+  if (typeof revision !== 'number' || !Number.isSafeInteger(revision)) throw new Error('Remote Keeper revision is invalid');
   const document = normalizeDocument(rawDocument);
   if (!document) throw new Error('Remote Keeper document is invalid');
-  return { document, revision: state.revision };
+  return { document, revision };
 }
 
 export async function writeRemoteDocument(_userId: string, document: KeeperDocument, revision: number | null) {
