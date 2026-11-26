@@ -23,7 +23,6 @@ interface AppContextMenuProps {
   onGoToDashboard: () => void;
   onNewCollection: () => void;
   onOpenSettings: () => void;
-
 }
 
 export const AppContextMenu = forwardRef<HTMLDivElement, AppContextMenuProps>(
