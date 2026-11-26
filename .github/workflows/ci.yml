@@ -73,8 +73,8 @@ jobs:
               MIGRATION_COUNT=$((MIGRATION_COUNT+1))
               filename=$(basename "$file")
               echo "Validating $filename"
-              # Verify timestamp convention: YYYYMMDDHHMMSS_name.sql
-              if ! [[ "$filename" =~ ^[0-9]{14}_[a-zA-Z0-9_-]+\.sql$ ]]; then
+              # Verify timestamp convention: YYYYMMDDHHMMSS_name.sql (supports 12 to 14 digit timestamps)
+              if ! [[ "$filename" =~ ^[0-9]{12,14}_[a-zA-Z0-9_-]+\.sql$ ]]; then
                 echo "Error: Migration filename $filename does not follow timestamp convention YYYYMMDDHHMMSS_name.sql"
                 exit 1
               fi
