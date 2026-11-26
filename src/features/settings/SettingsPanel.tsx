@@ -23,8 +23,7 @@ import { FontSizeSelector, type FontSize } from '../../components/FontSelector';
 import { WallpaperPicker } from '../../components/WallpaperPicker';
 import type { Preferences } from './preferences';
 import type { DashboardWidget } from '../dashboard/DashboardWidgets';
-import { defaultPreferences } from './preferences';
-import { FONT_OPTIONS } from './preferences';
+import { defaultPreferences, getAllowedFonts } from './preferences';
 import { isBackup } from '../../lib/validation';
 import { syncEngine, type SyncEngineState } from '../../lib/sync';
 import { supabase } from '../../lib/supabase';
@@ -511,7 +510,7 @@ export function SettingsPanel({
               </small>
               <FontSelector
                 value={draftPreferences.font}
-                options={FONT_OPTIONS}
+                options={getAllowedFonts()}
                 size={draftPreferences.size}
                 onSizeChange={(size) => {
                   const next = { ...draftPreferences, size };
@@ -584,7 +583,7 @@ export function SettingsPanel({
                           value={
                             selectedStyle!.nameFont ?? selectedStyle!.font ?? draftPreferences.font
                           }
-                          options={FONT_OPTIONS}
+                          options={getAllowedFonts()}
                           onChange={(font) =>
                             setDraftCollectionStyles((value) => ({
                               ...value,
@@ -639,7 +638,7 @@ export function SettingsPanel({
                           value={
                             selectedStyle!.cardFont ?? selectedStyle!.font ?? draftPreferences.font
                           }
-                          options={FONT_OPTIONS}
+                          options={getAllowedFonts()}
                           onChange={(font) =>
                             setDraftCollectionStyles((value) => ({
                               ...value,

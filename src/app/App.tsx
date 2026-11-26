@@ -19,9 +19,18 @@ import { GlobalSearch } from '../components/GlobalSearch';
 import type { Collection, Site } from '../components/types';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';
-import { defaultPreferences, readPreferences } from '../features/settings/preferences';
+import {
+  defaultPreferences,
+  readPreferences,
+  getAllowedFonts,
+} from '../features/settings/preferences';
 import type { Preferences } from '../features/settings/preferences';
-import { FONT_OPTIONS } from '../features/settings/preferences';
+import { AdminPage } from '../admin/AdminPage';
+import {
+  readLocalSiteConfig,
+  fetchRemoteSiteConfig,
+  applySiteConfigToDocument,
+} from '../admin/siteConfig';
 import {
   readShortcutBindings,
   saveShortcutBindings,
@@ -138,6 +147,13 @@ function App() {
     'appearance' | 'collections' | 'profile' | 'data'
   >('appearance');
   const [settingsCollectionId, setSettingsCollectionId] = useState<string | undefined>();
+  const [adminRouteOpen, setAdminRouteOpen] = useState(() => {
+    return (
+      window.location.pathname.startsWith('/admin') ||
+      window.location.hash.startsWith('#/admin') ||
+      new URLSearchParams(window.location.search).get('view') === 'admin'
+    );
+  });
   const [draggedSite, setDraggedSite] = useState<Site | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<Collection | null>(null);
@@ -179,6 +195,39 @@ function App() {
     return () => {
       active = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  // Developer site config initialization and real-time document title / favicon setup
+  useEffect(() => {
+    const local = readLocalSiteConfig();
+    applySiteConfigToDocument(local);
+    void fetchRemoteSiteConfig().then((remote) => {
+      if (remote) {
+        applySiteConfigToDocument(remote);
+      }
+    });
+
+    const onConfigUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail) {
+        applySiteConfigToDocument(detail);
+      }
+    };
+    window.addEventListener('keeper:site-config-updated', onConfigUpdate);
+
+    const onPopState = () => {
+      setAdminRouteOpen(
+        window.location.pathname.startsWith('/admin') ||
+          window.location.hash.startsWith('#/admin') ||
+          new URLSearchParams(window.location.search).get('view') === 'admin'
+      );
+    };
+    window.addEventListener('popstate', onPopState);
+
+    return () => {
+      window.removeEventListener('keeper:site-config-updated', onConfigUpdate);
+      window.removeEventListener('popstate', onPopState);
     };
   }, []);
 
@@ -590,7 +639,7 @@ function App() {
     );
     root.style.setProperty(
       '--ui-font',
-      `'${FONT_OPTIONS.includes(displayedPreferences.font as (typeof FONT_OPTIONS)[number]) ? displayedPreferences.font : 'Roboto'}', sans-serif`
+      `'${getAllowedFonts().includes(displayedPreferences.font) ? displayedPreferences.font : 'Roboto'}', sans-serif`
     );
     root.style.setProperty('--ui-font-size', `${displayedPreferences.size}px`);
     const fontScale = displayedPreferences.size / 16;
@@ -1067,6 +1116,22 @@ function App() {
     });
   };
 
+  if (adminRouteOpen) {
+    return (
+      <AdminPage
+        onExit={() => {
+          setAdminRouteOpen(false);
+          if (window.location.pathname.startsWith('/admin')) {
+            window.history.pushState({}, '', '/');
+          }
+          if (window.location.hash.startsWith('#/admin')) {
+            window.location.hash = '';
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <DndContext
       sensors={sensors}
@@ -1466,6 +1531,10 @@ function App() {
             onNewCollection={() => openCollectionModal()}
             onOpenSettings={() => {
               setModal('settings');
+              setMenu(null);
+            }}
+            onOpenAdmin={() => {
+              setAdminRouteOpen(true);
               setMenu(null);
             }}
           />

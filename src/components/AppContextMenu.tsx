@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import type { CSSProperties } from 'react';
-import { Compass, ExternalLink, FolderPlus, Link2, Settings, X } from 'lucide-react';
+import { Compass, ExternalLink, FolderPlus, Link2, Settings, Terminal, X } from 'lucide-react';
 import type { Collection, Site } from './types';
 
 export type MenuState = {
@@ -23,6 +23,7 @@ interface AppContextMenuProps {
   onGoToDashboard: () => void;
   onNewCollection: () => void;
   onOpenSettings: () => void;
+  onOpenAdmin?: () => void;
 }
 
 export const AppContextMenu = forwardRef<HTMLDivElement, AppContextMenuProps>(
@@ -40,6 +41,7 @@ export const AppContextMenu = forwardRef<HTMLDivElement, AppContextMenuProps>(
       onGoToDashboard,
       onNewCollection,
       onOpenSettings,
+      onOpenAdmin,
     },
     ref
   ) {
@@ -117,6 +119,11 @@ export const AppContextMenu = forwardRef<HTMLDivElement, AppContextMenuProps>(
             <button role="menuitem" onClick={onOpenSettings}>
               <Settings size={15} /> Settings
             </button>
+            {onOpenAdmin && (
+              <button role="menuitem" onClick={onOpenAdmin}>
+                <Terminal size={15} /> Developer dashboard
+              </button>
+            )}
           </>
         )}
       </div>

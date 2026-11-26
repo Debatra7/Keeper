@@ -1,6 +1,7 @@
 import { Ban, Palette } from 'lucide-react';
+import { readLocalSiteConfig } from '../admin/siteConfig';
 
-export const COLOR_PRESETS = [
+export const DEFAULT_COLOR_PRESETS = [
   '#f08f9b',
   '#e6b879',
   '#e6dc79',
@@ -16,13 +17,17 @@ export function ColorPicker({
   label,
   fallbackColor = '#a8b5ff',
   allowNone = false,
+  presets,
 }: {
   value: string;
   onChange: (color: string) => void;
   label: string;
   fallbackColor?: string;
   allowNone?: boolean;
+  presets?: string[];
 }) {
+  const activePresets = presets ?? readLocalSiteConfig().accentPalette ?? DEFAULT_COLOR_PRESETS;
+
   const customPicker = (
     <label className="color-picker-custom" title="Choose a custom color">
       <Palette size={14} aria-hidden="true" />
@@ -49,7 +54,7 @@ export function ColorPicker({
           <Ban size={17} />
         </button>
       )}
-      {COLOR_PRESETS.map((color) => (
+      {activePresets.map((color) => (
         <button
           key={color}
           type="button"

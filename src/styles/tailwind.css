@@ -132,6 +132,11 @@
     height: 100dvh;
     overflow: hidden;
   }
+  body:has(.admin-root) {
+    overflow-y: auto;
+    height: auto;
+    min-height: 100vh;
+  }
   @variant motion-reduce {
     * {
       scroll-behavior: auto !important;
