@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Save,
-  RotateCcw,
+
   Sparkles,
   Palette,
   Type,
@@ -75,13 +75,6 @@ export function AdminDashboard({ onExit, onLogout }: AdminDashboardProps) {
     } finally {
       setSaving(false);
       setTimeout(() => setStatusMessage(null), 5000);
-    }
-  };
-
-  const handleResetDefaults = () => {
-    if (window.confirm('Reset developer configuration to system defaults?')) {
-      setConfig(INITIAL_SITE_CONFIG);
-      setStatusMessage({ type: 'success', text: 'Defaults restored. Click Save to persist.' });
     }
   };
 
@@ -166,14 +159,7 @@ export function AdminDashboard({ onExit, onLogout }: AdminDashboardProps) {
           >
             Lock Session
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleResetDefaults}
-            className="border-neutral-800 text-neutral-400 hover:text-neutral-200"
-          >
-            <RotateCcw className="w-3.5 h-3.5 mr-1.5" /> Defaults
-          </Button>
+
           <Button
             size="sm"
             onClick={handleSave}
