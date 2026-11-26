@@ -480,7 +480,7 @@ export function AdminDashboard({ onExit, onLogout }: AdminDashboardProps) {
                   <button
                     onClick={() => removeColor(color)}
                     title={`Remove ${color}`}
-                    className="text-neutral-500 hover:text-red-400 ml-1 transition-colors"
+                    className="text-neutral-500 hover:text-red-400 ml-1 bg-transparent border-0 p-0 shadow-none transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

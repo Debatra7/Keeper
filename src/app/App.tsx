@@ -1533,10 +1533,6 @@ function App() {
               setModal('settings');
               setMenu(null);
             }}
-            onOpenAdmin={() => {
-              setAdminRouteOpen(true);
-              setMenu(null);
-            }}
           />
         )}
         <DragOverlay
