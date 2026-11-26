@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   ArrowLeft,
   Save,
-
   Sparkles,
   Palette,
   Type,

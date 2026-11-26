@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { ArrowUpRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
+import { Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Toast } from '../../components/ToastStack';
 import { ToastStack } from '../../components/ToastStack';
@@ -9,7 +9,10 @@ type AuthMode = 'login' | 'signup' | 'reset' | 'recovery' | 'sent';
 export function AuthScreen({
   onAuthenticated,
   recovery = false,
-}: { onAuthenticated?: () => void; recovery?: boolean }) {
+}: {
+  onAuthenticated?: () => void;
+  recovery?: boolean;
+}) {
   // Toast handling
   const [toasts, setToasts] = useState<Toast[]>([]);
   const addToast = (message: string, tone: Toast['tone']) => {
@@ -93,23 +96,23 @@ export function AuthScreen({
     mode === 'recovery'
       ? 'Choose a new password'
       : mode === 'reset'
-      ? 'Reset your password'
-      : mode === 'sent'
-      ? 'Check your inbox'
-      : mode === 'login'
-      ? 'Welcome back'
-      : 'Create your account';
+        ? 'Reset your password'
+        : mode === 'sent'
+          ? 'Check your inbox'
+          : mode === 'login'
+            ? 'Welcome back'
+            : 'Create your account';
 
   const description =
     mode === 'recovery'
       ? 'Use at least 8 characters for your new password.'
       : mode === 'reset'
-      ? 'We’ll email a secure link if an account exists for that address.'
-      : mode === 'sent'
-      ? 'If an account exists for that email, a reset link is on its way.'
-      : mode === 'login'
-      ? 'Sign in to continue to Keeper.'
-      : 'Create an account for Keeper.';
+        ? 'We’ll email a secure link if an account exists for that address.'
+        : mode === 'sent'
+          ? 'If an account exists for that email, a reset link is on its way.'
+          : mode === 'login'
+            ? 'Sign in to continue to Keeper.'
+            : 'Create an account for Keeper.';
 
   return (
     <main className="auth-screen">
@@ -221,7 +224,13 @@ export function AuthScreen({
               type="submit"
               disabled={busy || !supabase}
             >
-              {busy ? 'Please wait…' : mode === 'reset' ? 'Send reset link' : mode === 'signup' ? 'Create account' : 'Sign in'}
+              {busy
+                ? 'Please wait…'
+                : mode === 'reset'
+                  ? 'Send reset link'
+                  : mode === 'signup'
+                    ? 'Create account'
+                    : 'Sign in'}
             </button>
           </form>
         )}
