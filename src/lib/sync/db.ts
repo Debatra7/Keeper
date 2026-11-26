@@ -107,7 +107,7 @@ export async function addOutboxMutation(mutation: Mutation): Promise<void> {
   } catch {
     // Fallback
     const list = getLocalStorageOutbox();
-    const filtered = list.filter(m => m.id !== mutation.id);
+    const filtered = list.filter((m) => m.id !== mutation.id);
     filtered.push(mutation);
     setLocalStorageOutbox(filtered);
   }
@@ -153,7 +153,7 @@ export async function removeOutboxMutations(ids: string[]): Promise<void> {
   } catch {
     // Fallback
     const list = getLocalStorageOutbox();
-    const remaining = list.filter(m => !idSet.has(m.id));
+    const remaining = list.filter((m) => !idSet.has(m.id));
     setLocalStorageOutbox(remaining);
   }
 }
@@ -228,10 +228,18 @@ export function setCloudBackupEnabled(enabled: boolean): void {
 }
 
 export function getAutomatedSyncEnabled(): boolean {
-  try { return localStorage.getItem(AUTOMATED_SYNC_ENABLED_KEY) !== 'false'; } catch { return true; }
+  try {
+    return localStorage.getItem(AUTOMATED_SYNC_ENABLED_KEY) !== 'false';
+  } catch {
+    return true;
+  }
 }
 export function setAutomatedSyncEnabled(enabled: boolean): void {
-  try { localStorage.setItem(AUTOMATED_SYNC_ENABLED_KEY, String(enabled)); } catch { /* Ignore storage errors */ }
+  try {
+    localStorage.setItem(AUTOMATED_SYNC_ENABLED_KEY, String(enabled));
+  } catch {
+    /* Ignore storage errors */
+  }
 }
 
 export function resetSyncMetadata(): void {

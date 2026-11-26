@@ -17,7 +17,9 @@ await build({
   },
 });
 
-const result = spawnSync(process.execPath, ['dist-test/sync.test.js'], { stdio: 'inherit' });
+const result = spawnSync(process.execPath, ['dist-test/sync.test.js'], {
+  stdio: 'inherit',
+});
 try {
   rmSync('dist-test', { recursive: true, force: true });
 } catch {

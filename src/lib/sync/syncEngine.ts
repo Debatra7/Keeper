@@ -1,7 +1,15 @@
 import type { Session, RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, readRemoteDocument, writeRemoteDocument } from '../supabase';
 import type { KeeperDocument } from '../validation';
-import type { Mutation, SyncEngineState, SyncResult, SyncStatus, EntityType, MutationOp, SyncErrorDetails } from './types';
+import type {
+  Mutation,
+  SyncEngineState,
+  SyncResult,
+  SyncStatus,
+  EntityType,
+  MutationOp,
+  SyncErrorDetails,
+} from './types';
 import {
   getDeviceId,
   getOutboxMutations,
@@ -129,6 +137,11 @@ export class SyncEngine {
     if (this.cloudBackupEnabled === enabled) return;
     this.cloudBackupEnabled = enabled;
     setCloudBackupEnabled(enabled);
+    window.dispatchEvent(
+      new CustomEvent('keeper:user-settings-change', {
+        detail: { cloudBackupEnabled: enabled },
+      })
+    );
 
     if (!enabled) this.setAutomatedSyncEnabled(false);
 
@@ -151,6 +164,11 @@ export class SyncEngine {
     if (this.automatedSyncEnabled === enabled) return;
     this.automatedSyncEnabled = enabled;
     setAutomatedSyncEnabled(enabled);
+    window.dispatchEvent(
+      new CustomEvent('keeper:user-settings-change', {
+        detail: { automatedSyncEnabled: enabled },
+      })
+    );
     if (!enabled) {
       if (this.syncTimeout) window.clearTimeout(this.syncTimeout);
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
@@ -171,7 +189,7 @@ export class SyncEngine {
     this.getCurrentDocument = getCurrentDocument;
 
     if (this.sessionDocumentListener) this.documentListeners.delete(this.sessionDocumentListener);
-    this.sessionDocumentListener = session ? onDocumentUpdated ?? null : null;
+    this.sessionDocumentListener = session ? (onDocumentUpdated ?? null) : null;
     if (this.sessionDocumentListener) this.documentListeners.add(this.sessionDocumentListener);
 
     if (prevUserId !== nextUserId) {
@@ -226,7 +244,7 @@ export class SyncEngine {
           table: 'keeper_change_log',
           filter: `user_id=eq.${userId}`,
         },
-        payload => {
+        (payload) => {
           const newRow = payload.new as { device_id?: string; seq?: number };
           if (newRow?.device_id && newRow.device_id !== this.deviceId && this.cloudBackupEnabled) {
             this.scheduleSync(50);
@@ -312,7 +330,8 @@ export class SyncEngine {
         code: 'NETWORK_OFFLINE',
         title: 'Device is offline',
         message: 'Your browser is currently disconnected from the internet.',
-        suggestion: 'Changes are safely preserved in this browser’s local database. Sync will automatically resume as soon as connection returns.',
+        suggestion:
+          'Changes are safely preserved in this browser’s local database. Sync will automatically resume as soon as connection returns.',
         timestamp: now,
         attempt: this.retryAttempt,
       };
@@ -344,8 +363,10 @@ export class SyncEngine {
       return {
         code: 'SERVER_UNREACHABLE',
         title: 'Cloud server unreachable',
-        message: 'Unable to establish a connection with the database endpoint within timeout limit.',
-        suggestion: 'Check if your network or firewall allows requests to your Supabase instance. Retrying automatically.',
+        message:
+          'Unable to establish a connection with the database endpoint within timeout limit.',
+        suggestion:
+          'Check if your network or firewall allows requests to your Supabase instance. Retrying automatically.',
         timestamp: now,
         attempt: this.retryAttempt,
       };
@@ -362,12 +383,17 @@ export class SyncEngine {
       };
     }
 
-    if (/PGRST202|Could not find the function public\.sync_keeper_changes/i.test(msg) || code === 'PGRST202') {
+    if (
+      /PGRST202|Could not find the function public\.sync_keeper_changes/i.test(msg) ||
+      code === 'PGRST202'
+    ) {
       return {
         code: 'PGRST202',
         title: 'CDC Sync Migration Required on Server',
-        message: 'The function "sync_keeper_changes" has not been deployed to your Supabase project yet.',
-        suggestion: 'Run the migration SQL (20261125240000_offline_sync_engine.sql) in your Supabase SQL Editor to enable incremental CDC sync.',
+        message:
+          'The function "sync_keeper_changes" has not been deployed to your Supabase project yet.',
+        suggestion:
+          'Run the migration SQL (20261125240000_offline_sync_engine.sql) in your Supabase SQL Editor to enable incremental CDC sync.',
         timestamp: now,
         attempt: this.retryAttempt,
       };
@@ -377,7 +403,8 @@ export class SyncEngine {
       code: code ? String(code) : 'SYNC_ERROR',
       title: 'Cloud sync encountered an issue',
       message: msg.slice(0, 300) || 'An unexpected error occurred during change transmission.',
-      suggestion: 'Click “Retry sync” or check your connection. All local edits are securely saved in this browser.',
+      suggestion:
+        'Click “Retry sync” or check your connection. All local edits are securely saved in this browser.',
       timestamp: now,
       attempt: this.retryAttempt,
     };
@@ -426,7 +453,9 @@ export class SyncEngine {
         p_mutations: outbox,
       };
 
-      const { data, error } = await supabase.rpc('sync_keeper_changes', payload).abortSignal(this.syncAbortController.signal);
+      const { data, error } = await supabase
+        .rpc('sync_keeper_changes', payload)
+        .abortSignal(this.syncAbortController.signal);
 
       if (error) {
         // If the new CDC incremental RPC is not yet created on the Supabase backend:
@@ -485,7 +514,10 @@ export class SyncEngine {
       this.retryAttempt++;
       const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(this.retryAttempt, 5)));
       if (this.retryTimeout) window.clearTimeout(this.retryTimeout);
-      if (this.session?.user.id && this.cloudBackupEnabled && this.automatedSyncEnabled) this.retryTimeout = window.setTimeout(() => { void this.sync(); }, backoffMs);
+      if (this.session?.user.id && this.cloudBackupEnabled && this.automatedSyncEnabled)
+        this.retryTimeout = window.setTimeout(() => {
+          void this.sync();
+        }, backoffMs);
     } finally {
       window.clearTimeout(requestTimeout);
       this.syncAbortController = null;
@@ -519,7 +551,7 @@ export class SyncEngine {
       }
 
       if (outbox.length > 0) {
-        await removeOutboxMutations(outbox.map(m => m.id));
+        await removeOutboxMutations(outbox.map((m) => m.id));
       }
 
       const now = new Date().toISOString();
@@ -530,8 +562,10 @@ export class SyncEngine {
       this.errorDetails = {
         code: 'PGRST202_COMPAT_MODE',
         title: 'Compatibility Sync Mode Active',
-        message: 'Cloud sync succeeded using document mode. The advanced RPC "sync_keeper_changes" is not yet deployed to your Supabase project.',
-        suggestion: 'To enable full Change Data Capture (CDC) and multi-device incremental sync, execute the SQL migration in your Supabase SQL Editor.',
+        message:
+          'Cloud sync succeeded using document mode. The advanced RPC "sync_keeper_changes" is not yet deployed to your Supabase project.',
+        suggestion:
+          'To enable full Change Data Capture (CDC) and multi-device incremental sync, execute the SQL migration in your Supabase SQL Editor.',
         timestamp: now,
       };
 

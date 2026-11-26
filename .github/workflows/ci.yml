@@ -1,0 +1,118 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Check code formatting (Prettier)
+        run: npm run format:check
+
+      - name: Lint source code (Oxlint)
+        run: npm run lint
+
+  typecheck-and-test:
+    name: Typecheck & Automated Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Strict TypeScript verification
+        run: npm run typecheck
+
+      - name: Run test suite (CDC sync, LWW, 3-way merge, tombs)
+        run: npm test
+
+  database-verification:
+    name: Supabase Migrations Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify migration files naming and syntax
+        shell: bash
+        run: |
+          echo "Checking Supabase SQL migration files..."
+          MIGRATION_COUNT=0
+          for file in supabase/migrations/*.sql; do
+            if [ -f "$file" ]; then
+              MIGRATION_COUNT=$((MIGRATION_COUNT+1))
+              filename=$(basename "$file")
+              echo "Validating $filename"
+              # Verify timestamp convention: YYYYMMDDHHMMSS_name.sql
+              if ! [[ "$filename" =~ ^[0-9]{14}_[a-zA-Z0-9_-]+\.sql$ ]]; then
+                echo "Error: Migration filename $filename does not follow timestamp convention YYYYMMDDHHMMSS_name.sql"
+                exit 1
+              fi
+              # Check for basic SQL validity / unbalanced quotes
+              if grep -q $'\x00' "$file"; then
+                echo "Error: Null byte detected in $filename"
+                exit 1
+              fi
+            fi
+          done
+          echo "Successfully validated $MIGRATION_COUNT migration files."
+
+  build-production:
+    name: Production Build
+    needs: [code-quality, typecheck-and-test, database-verification]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build client application bundle
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://xnatpitgysnzrhxusiyr.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'dummy-build-key' }}
+
+      - name: Upload production build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: keeper-production-bundle
+          path: dist/
+          retention-days: 7

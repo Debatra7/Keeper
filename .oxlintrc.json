@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "unicorn"],
+  "rules": {
+    "no-control-regex": "off",
+    "unicorn/no-useless-fallback-in-spread": "off",
+    "react/set-state-in-effect": "off",
+    "react/purity": "off",
+    "react/immutability": "off",
+    "react-hooks/exhaustive-deps": "warn"
+  }
+}

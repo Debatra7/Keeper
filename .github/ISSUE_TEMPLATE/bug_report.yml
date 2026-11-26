@@ -1,0 +1,45 @@
+name: Bug Report
+description: Create a report to help us fix a bug or unexpected behavior
+title: "[BUG]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue!
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Describe the Bug
+      description: A clear and concise description of what the bug is.
+    validations:
+      required: true
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps To Reproduce
+      description: Detailed steps explaining how to trigger the bug.
+      placeholder: |
+        1. Open Keeper
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: A concise description of what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment Info
+      description: Operating System, Browser version, Node version.
+      value: |
+        - OS: [e.g. Windows 11, macOS Sequoia, Ubuntu 24.04]
+        - Browser: [e.g. Chrome 132, Firefox 135, Safari 18]
+        - Node Version: [e.g. v22.15.1]
+    validations:
+      required: false

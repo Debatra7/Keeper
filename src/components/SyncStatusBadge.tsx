@@ -30,7 +30,7 @@ export function SyncStatusBadge({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    return syncEngine.subscribe(next => {
+    return syncEngine.subscribe((next) => {
       setSyncState(next);
       if (next.status === 'syncing') {
         setIsRotating(true);
@@ -103,7 +103,8 @@ export function SyncStatusBadge({
 
   const getNavIcon = () => {
     if (!syncState.cloudBackupEnabled) return <PauseCircle size={15} />;
-    if (syncState.status === 'syncing') return <RefreshCw size={15} className={isRotating ? 'spin-icon' : ''} />;
+    if (syncState.status === 'syncing')
+      return <RefreshCw size={15} className={isRotating ? 'spin-icon' : ''} />;
     if (syncState.status === 'offline') return <WifiOff size={15} />;
     if (syncState.status === 'error') return <AlertCircle size={15} />;
     if (syncState.status === 'paused') return <PauseCircle size={15} />;
@@ -135,7 +136,7 @@ export function SyncStatusBadge({
         ref={triggerRef}
         type="button"
         className={`sync-status-badge sync-nav-trigger ${getStatusClass()} ${className}`}
-        onClick={() => setPopoverOpen(open => !open)}
+        onClick={() => setPopoverOpen((open) => !open)}
         aria-expanded={popoverOpen}
         aria-label={getLabel()}
         title={`${getLabel()} · Click for sync details`}
@@ -149,7 +150,7 @@ export function SyncStatusBadge({
           className="sync-diagnostics-popover"
           role="dialog"
           aria-label="Sync details and status"
-          onClick={e => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
           <div className="sync-popover-header">
@@ -183,44 +184,85 @@ export function SyncStatusBadge({
             </label>
           </div>
 
-          <div className={`sync-backup-toggle-row automated-sync-toggle ${!syncState.cloudBackupEnabled ? 'disabled' : ''}`}>
-            <div><strong>Automated sync</strong><small>{syncState.automatedSyncEnabled ? 'Changes sync automatically when online.' : 'Sync only runs when you select Sync Now.'}</small></div>
+          <div
+            className={`sync-backup-toggle-row automated-sync-toggle ${!syncState.cloudBackupEnabled ? 'disabled' : ''}`}
+          >
+            <div>
+              <strong>Automated sync</strong>
+              <small>
+                {syncState.automatedSyncEnabled
+                  ? 'Changes sync automatically when online.'
+                  : 'Sync only runs when you select Sync Now.'}
+              </small>
+            </div>
             <label className="switch-toggle" aria-label="Toggle automated sync">
-              <input type="checkbox" checked={syncState.automatedSyncEnabled} disabled={!syncState.cloudBackupEnabled} onChange={e => { if (e.target.checked && !syncState.cloudBackupEnabled) window.dispatchEvent(new CustomEvent('keeper:toast', { detail: { message: 'Turn on Cloud backup to enable automated sync.', tone: 'warning' } })); else syncEngine.setAutomatedSyncEnabled(e.target.checked); }} />
+              <input
+                type="checkbox"
+                checked={syncState.automatedSyncEnabled}
+                disabled={!syncState.cloudBackupEnabled}
+                onChange={(e) => {
+                  if (e.target.checked && !syncState.cloudBackupEnabled)
+                    window.dispatchEvent(
+                      new CustomEvent('keeper:toast', {
+                        detail: {
+                          message: 'Turn on Cloud backup to enable automated sync.',
+                          tone: 'warning',
+                        },
+                      })
+                    );
+                  else syncEngine.setAutomatedSyncEnabled(e.target.checked);
+                }}
+              />
               <span className="switch-slider" />
             </label>
           </div>
 
           {/* Problem Diagnostics Alert Box */}
-          {syncState.cloudBackupEnabled && (syncState.status === 'error' || syncState.status === 'offline') && (
-            <div className={`sync-issue-card ${syncState.status}`}>
-              <div className="sync-issue-header">
-                <AlertCircle size={16} className="sync-issue-icon" />
-                <strong>{syncState.errorDetails?.title || (syncState.status === 'offline' ? 'Device is offline' : 'Sync encountered an issue')}</strong>
-              </div>
-              <p className="sync-issue-message">
-                {syncState.errorDetails?.message || 'Unable to connect to the cloud service to push pending mutations.'}
-              </p>
-              <div className="sync-issue-suggestion">
-                <Info size={13} style={{ flexShrink: 0, marginTop: 2 }} />
-                <span>{syncState.errorDetails?.suggestion || 'Check your internet connection or verify your account session in settings.'}</span>
-              </div>
-              {syncState.errorDetails?.code && (
-                <div className="sync-issue-code">
-                  <span>Error Code: <code>{syncState.errorDetails.code}</code></span>
-                  {syncState.errorDetails.attempt ? (
-                    <span>Attempt: #{syncState.errorDetails.attempt}</span>
-                  ) : null}
+          {syncState.cloudBackupEnabled &&
+            (syncState.status === 'error' || syncState.status === 'offline') && (
+              <div className={`sync-issue-card ${syncState.status}`}>
+                <div className="sync-issue-header">
+                  <AlertCircle size={16} className="sync-issue-icon" />
+                  <strong>
+                    {syncState.errorDetails?.title ||
+                      (syncState.status === 'offline'
+                        ? 'Device is offline'
+                        : 'Sync encountered an issue')}
+                  </strong>
                 </div>
-              )}
-            </div>
-          )}
+                <p className="sync-issue-message">
+                  {syncState.errorDetails?.message ||
+                    'Unable to connect to the cloud service to push pending mutations.'}
+                </p>
+                <div className="sync-issue-suggestion">
+                  <Info size={13} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span>
+                    {syncState.errorDetails?.suggestion ||
+                      'Check your internet connection or verify your account session in settings.'}
+                  </span>
+                </div>
+                {syncState.errorDetails?.code && (
+                  <div className="sync-issue-code">
+                    <span>
+                      Error Code: <code>{syncState.errorDetails.code}</code>
+                    </span>
+                    {syncState.errorDetails.attempt ? (
+                      <span>Attempt: #{syncState.errorDetails.attempt}</span>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            )}
 
           {/* Current Status Stats Grid */}
           <div className="sync-stats-grid">
             <div className="sync-stat-item">
               <span className="sync-stat-label">
-                {syncState.isOnline ? <Wifi size={13} className="text-success" /> : <WifiOff size={13} className="text-warning" />}
+                {syncState.isOnline ? (
+                  <Wifi size={13} className="text-success" />
+                ) : (
+                  <WifiOff size={13} className="text-warning" />
+                )}
                 Connection
               </span>
               <strong className="sync-stat-value">

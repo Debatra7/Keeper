@@ -16,11 +16,11 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
       if (op === 'delete') {
         return {
           ...doc,
-          collections: doc.collections.filter(c => c.id !== entityId),
+          collections: doc.collections.filter((c) => c.id !== entityId),
         };
       }
       if (op === 'insert') {
-        const existingIndex = doc.collections.findIndex(c => c.id === entityId);
+        const existingIndex = doc.collections.findIndex((c) => c.id === entityId);
         const newCollection: Collection = {
           id: entityId,
           name: data?.name ?? 'Untitled',
@@ -37,7 +37,9 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
           next[existingIndex] = {
             ...next[existingIndex],
             ...newCollection,
-            sites: next[existingIndex].sites.length ? next[existingIndex].sites : newCollection.sites,
+            sites: next[existingIndex].sites.length
+              ? next[existingIndex].sites
+              : newCollection.sites,
           };
           return { ...doc, collections: next };
         }
@@ -49,7 +51,7 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
       if (op === 'update' || op === 'patch') {
         return {
           ...doc,
-          collections: doc.collections.map(c => {
+          collections: doc.collections.map((c) => {
             if (c.id !== entityId) return c;
             return {
               ...c,
@@ -58,8 +60,12 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
               ...(data?.font !== undefined && { font: data.font }),
               ...(data?.nameFont !== undefined && { nameFont: data.nameFont }),
               ...(data?.cardFont !== undefined && { cardFont: data.cardFont }),
-              ...(data?.titleFontSize !== undefined && { titleFontSize: data.titleFontSize }),
-              ...(data?.cardFontSize !== undefined && { cardFontSize: data.cardFontSize }),
+              ...(data?.titleFontSize !== undefined && {
+                titleFontSize: data.titleFontSize,
+              }),
+              ...(data?.cardFontSize !== undefined && {
+                cardFontSize: data.cardFontSize,
+              }),
             };
           }),
         };
@@ -72,9 +78,9 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
       if (op === 'delete') {
         return {
           ...doc,
-          collections: doc.collections.map(c => ({
+          collections: doc.collections.map((c) => ({
             ...c,
-            sites: c.sites.filter(s => s.id !== entityId),
+            sites: c.sites.filter((s) => s.id !== entityId),
           })),
         };
       }
@@ -87,16 +93,16 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
         };
         return {
           ...doc,
-          collections: doc.collections.map(c => {
+          collections: doc.collections.map((c) => {
             if (c.id !== collectionId) {
               // Ensure deduplication if moved
-              return { ...c, sites: c.sites.filter(s => s.id !== entityId) };
+              return { ...c, sites: c.sites.filter((s) => s.id !== entityId) };
             }
-            const exists = c.sites.some(s => s.id === entityId);
+            const exists = c.sites.some((s) => s.id === entityId);
             if (exists) {
               return {
                 ...c,
-                sites: c.sites.map(s => (s.id === entityId ? { ...s, ...newSite } : s)),
+                sites: c.sites.map((s) => (s.id === entityId ? { ...s, ...newSite } : s)),
               };
             }
             const sortOrder = data?.sortOrder;
@@ -113,17 +119,21 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
         const targetCollectionId = data?.collectionId;
         return {
           ...doc,
-          collections: doc.collections.map(c => {
-            const hasSite = c.sites.some(s => s.id === entityId);
+          collections: doc.collections.map((c) => {
+            const hasSite = c.sites.some((s) => s.id === entityId);
             if (targetCollectionId && c.id !== targetCollectionId) {
               // If site moved out of this collection
-              return hasSite ? { ...c, sites: c.sites.filter(s => s.id !== entityId) } : c;
+              return hasSite ? { ...c, sites: c.sites.filter((s) => s.id !== entityId) } : c;
             }
             if (targetCollectionId && c.id === targetCollectionId && !hasSite) {
               // Site moved into this collection
               const currentSite = doc.collections
-                .flatMap(col => col.sites)
-                .find(s => s.id === entityId) ?? { id: entityId, name: data?.name ?? '', url: siteUrl ?? '' };
+                .flatMap((col) => col.sites)
+                .find((s) => s.id === entityId) ?? {
+                id: entityId,
+                name: data?.name ?? '',
+                url: siteUrl ?? '',
+              };
               const updatedSite: Site = {
                 ...currentSite,
                 ...(data?.name !== undefined && { name: data.name }),
@@ -134,7 +144,7 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
             if (hasSite) {
               return {
                 ...c,
-                sites: c.sites.map(s => {
+                sites: c.sites.map((s) => {
                   if (s.id !== entityId) return s;
                   return {
                     ...s,
@@ -155,7 +165,7 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
       if (op === 'delete') {
         return {
           ...doc,
-          widgets: doc.widgets.filter(w => w.id !== entityId),
+          widgets: doc.widgets.filter((w) => w.id !== entityId),
         };
       }
       if (op === 'insert') {
@@ -167,18 +177,18 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
           width: data?.width ?? 180,
           height: data?.height ?? 130,
         };
-        const exists = doc.widgets.some(w => w.id === entityId);
+        const exists = doc.widgets.some((w) => w.id === entityId);
         return {
           ...doc,
           widgets: exists
-            ? doc.widgets.map(w => (w.id === entityId ? { ...w, ...newWidget } : w))
+            ? doc.widgets.map((w) => (w.id === entityId ? { ...w, ...newWidget } : w))
             : [...doc.widgets, newWidget],
         };
       }
       if (op === 'update' || op === 'patch') {
         return {
           ...doc,
-          widgets: doc.widgets.map(w => {
+          widgets: doc.widgets.map((w) => {
             if (w.id !== entityId) return w;
             return {
               ...w,
@@ -200,16 +210,22 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
         preferences: {
           ...doc.preferences,
           ...(data?.accent !== undefined && { accent: data.accent }),
-          ...(data?.background !== undefined && { background: data.background }),
+          ...(data?.background !== undefined && {
+            background: data.background,
+          }),
           ...(data?.color1 !== undefined && { color1: data.color1 }),
           ...(data?.color2 !== undefined && { color2: data.color2 }),
           ...(data?.image !== undefined && { image: data.image }),
           ...(data?.imagePath !== undefined && { imagePath: data.imagePath }),
-          ...(data?.wallpaperUrls !== undefined && { wallpaperUrls: data.wallpaperUrls }),
+          ...(data?.wallpaperUrls !== undefined && {
+            wallpaperUrls: data.wallpaperUrls,
+          }),
           ...(data?.font !== undefined && { font: data.font }),
           ...(data?.size !== undefined && { size: data.size }),
         },
-        ...(data?.searchPosition !== undefined && { searchPosition: data.searchPosition }),
+        ...(data?.searchPosition !== undefined && {
+          searchPosition: data.searchPosition,
+        }),
       };
     }
 
@@ -230,7 +246,9 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
           ...doc.profile,
           ...(data?.name !== undefined && { name: data.name }),
           ...(data?.hideEmail !== undefined && { hideEmail: data.hideEmail }),
-          ...(data?.avatarPath !== undefined && { avatarPath: data.avatarPath }),
+          ...(data?.avatarPath !== undefined && {
+            avatarPath: data.avatarPath,
+          }),
         },
       };
     }
@@ -239,13 +257,16 @@ export function applyMutationToDocument(doc: KeeperDocument, mutation: Mutation)
       if (op === 'delete') {
         return {
           ...doc,
-          checkpoints: doc.checkpoints.filter(cp => cp.exportedAt !== entityId),
+          checkpoints: doc.checkpoints.filter((cp) => cp.exportedAt !== entityId),
         };
       }
       if (op === 'insert') {
         const newCp = data as DataBackup;
         if (!newCp || !newCp.exportedAt) return doc;
-        const merged = [...doc.checkpoints.filter(cp => cp.exportedAt !== newCp.exportedAt), newCp]
+        const merged = [
+          ...doc.checkpoints.filter((cp) => cp.exportedAt !== newCp.exportedAt),
+          newCp,
+        ]
           .sort((a, b) => Date.parse(a.exportedAt) - Date.parse(b.exportedAt))
           .slice(-5);
         return { ...doc, checkpoints: merged };

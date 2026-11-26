@@ -36,9 +36,7 @@ const initialDoc: KeeperDocument = {
     name: 'Alice',
     email: 'alice@example.com',
   },
-  widgets: [
-    { id: 'w_1', type: 'clock', x: 0, y: 0, width: 180, height: 130 },
-  ],
+  widgets: [{ id: 'w_1', type: 'clock', x: 0, y: 0, width: 180, height: 130 }],
   checkpoints: [],
   searchPosition: { x: 0, y: 0 },
 };
@@ -86,7 +84,7 @@ test('CDC / Optimistic: site operations (insert, reorder, delete)', () => {
   };
 
   const doc1 = applyMutationToDocument(initialDoc, addSite);
-  const col1 = doc1.collections.find(c => c.id === 'col_1');
+  const col1 = doc1.collections.find((c) => c.id === 'col_1');
   assert.equal(col1?.sites.length, 3);
   assert.equal(col1?.sites[2].name, 'Linear');
 
@@ -101,9 +99,9 @@ test('CDC / Optimistic: site operations (insert, reorder, delete)', () => {
   };
 
   const doc2 = applyMutationToDocument(doc1, deleteSite);
-  const col2 = doc2.collections.find(c => c.id === 'col_1');
+  const col2 = doc2.collections.find((c) => c.id === 'col_1');
   assert.equal(col2?.sites.length, 2);
-  assert.ok(!col2?.sites.some(s => s.id === 'site_1'));
+  assert.ok(!col2?.sites.some((s) => s.id === 'site_1'));
 });
 
 test('Cross-Collection Move: moving site between collections', () => {
@@ -118,12 +116,12 @@ test('Cross-Collection Move: moving site between collections', () => {
   };
 
   const movedDoc = applyMutationToDocument(initialDoc, moveMutation);
-  const col1 = movedDoc.collections.find(c => c.id === 'col_1');
-  const col2 = movedDoc.collections.find(c => c.id === 'col_2');
+  const col1 = movedDoc.collections.find((c) => c.id === 'col_1');
+  const col2 = movedDoc.collections.find((c) => c.id === 'col_2');
 
-  assert.ok(!col1?.sites.some(s => s.id === 'site_1'));
-  assert.ok(col2?.sites.some(s => s.id === 'site_1'));
-  assert.equal(col2?.sites.find(s => s.id === 'site_1')?.name, 'GitHub');
+  assert.ok(!col1?.sites.some((s) => s.id === 'site_1'));
+  assert.ok(col2?.sites.some((s) => s.id === 'site_1'));
+  assert.equal(col2?.sites.find((s) => s.id === 'site_1')?.name, 'GitHub');
 });
 
 test('Optimistic Rebase: pending mutations replayed on top of updated base', () => {
@@ -159,11 +157,11 @@ test('Optimistic Rebase: pending mutations replayed on top of updated base', () 
 
   const rebased = rebaseDocument(updatedBase, pending);
   // Contains remote collection
-  assert.ok(rebased.collections.some(c => c.id === 'col_remote'));
+  assert.ok(rebased.collections.some((c) => c.id === 'col_remote'));
   // Replays pending local mutations cleanly
   assert.equal(rebased.preferences.accent, '#ff00aa');
   assert.equal(rebased.widgets.length, 2);
-  assert.ok(rebased.widgets.some(w => w.id === 'w_2'));
+  assert.ok(rebased.widgets.some((w) => w.id === 'w_2'));
 });
 
 test('Conflict Resolution: multi-device editing different entities has zero conflict', () => {
@@ -208,13 +206,13 @@ test('Conflict Resolution: multi-device editing different entities has zero conf
 
   const merged = mergeRemoteChanges(initialDoc, remoteChanges, pendingMutations);
   // Device 2 changes incorporated
-  assert.ok(merged.widgets.some(w => w.id === 'w_remote'));
+  assert.ok(merged.widgets.some((w) => w.id === 'w_remote'));
   assert.equal(merged.preferences.font, 'Merriweather');
   // Device 1 pending change preserved
   const finalDoc = rebaseDocument(merged, pendingMutations);
-  assert.equal(finalDoc.collections.find(c => c.id === 'col_1')?.name, 'Work Updated by Dev1');
+  assert.equal(finalDoc.collections.find((c) => c.id === 'col_1')?.name, 'Work Updated by Dev1');
   assert.equal(finalDoc.preferences.font, 'Merriweather');
-  assert.ok(finalDoc.widgets.some(w => w.id === 'w_remote'));
+  assert.ok(finalDoc.widgets.some((w) => w.id === 'w_remote'));
 });
 
 test('Conflict Resolution: field-level merge for preferences (3-way merge)', () => {
@@ -284,7 +282,7 @@ test('Conflict Resolution: Last-Write-Wins (LWW) on exact same field conflict', 
 
   const merged = mergeRemoteChanges(initialDoc, remote, pending);
   // Remote is newer, so it wins
-  assert.equal(merged.collections.find(c => c.id === 'col_1')?.name, 'Name From Dev 2 (Later)');
+  assert.equal(merged.collections.find((c) => c.id === 'col_1')?.name, 'Name From Dev 2 (Later)');
 });
 
 test('Conflict Resolution: Remote delete wins over local update (tombstone)', () => {
@@ -315,7 +313,7 @@ test('Conflict Resolution: Remote delete wins over local update (tombstone)', ()
   ];
 
   const merged = mergeRemoteChanges(initialDoc, remote, pending);
-  assert.ok(!merged.collections.some(c => c.id === 'col_1'));
+  assert.ok(!merged.collections.some((c) => c.id === 'col_1'));
 });
 
 test('Checkpoints: merge maintains top 5 sorted chronologically', () => {
