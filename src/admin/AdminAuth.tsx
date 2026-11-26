@@ -62,8 +62,9 @@ export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const configuredKey = import.meta.env.VITE_DEV_ADMIN_KEY || 'dev-admin-secret';
-    const configuredPin = import.meta.env.VITE_DEV_ADMIN_PIN || '1234';
+    // Retrieve credentials from environment variables (no fallback defaults)
+    const configuredKey = import.meta.env.VITE_ADMIN_KEY;
+    const configuredPin = import.meta.env.VITE_ADMIN_PIN;
     const enteredPin = pinDigits.join('');
 
     const keyMatches = keyInput.trim() === configuredKey.trim();
@@ -132,7 +133,6 @@ export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
                 <label className="text-xs font-semibold tracking-wider text-neutral-300 uppercase flex items-center gap-1.5">
                   <KeyRound className="w-3.5 h-3.5 text-indigo-400" /> 4-Digit Security PIN
                 </label>
-                <span className="text-[11px] text-neutral-500">(VITE_DEV_ADMIN_PIN)</span>
               </div>
               <div className="flex justify-between gap-2.5">
                 {pinDigits.map((digit, idx) => (
