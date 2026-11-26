@@ -50,3 +50,5 @@ Thumbs.db
 *.sw?
 .prettierignore
 .prettierrc
+.vercel
+.env*
