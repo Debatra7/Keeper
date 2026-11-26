@@ -1,19 +1,23 @@
-
+import { useState, type FormEvent } from 'react';
 import { ArrowUpRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import type { Toast } from '../../components/ToastStack';
+import { ToastStack } from '../../components/ToastStack';
 
 type AuthMode = 'login' | 'signup' | 'reset' | 'recovery' | 'sent';
 
-import { ToastStack, Toast } from '../../components/ToastStack';
-
 export function AuthScreen({
-
   onAuthenticated,
   recovery = false,
-}: {
-  onAuthenticated?: () => void;
-  recovery?: boolean;
-}) {
+}: { onAuthenticated?: () => void; recovery?: boolean }) {
+  // Toast handling
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const addToast = (message: string, tone: Toast['tone']) => {
+    const id = Date.now();
+    setToasts((prev) => [...prev, { id, message, tone }]);
+  };
+  const dismissToast = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+
   const [mode, setMode] = useState<AuthMode>(recovery ? 'recovery' : 'login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,7 +30,9 @@ export function AuthScreen({
     event.preventDefault();
     if (!supabase || busy) return;
     if (mode === 'recovery' && password !== confirmPassword) {
-      setMessage('Passwords do not match.');
+      const msg = 'Passwords do not match.';
+      setMessage(msg);
+      addToast(msg, 'error');
       return;
     }
     setBusy(true);
@@ -36,32 +42,48 @@ export function AuthScreen({
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
           redirectTo: `${window.location.origin}${window.location.pathname}`,
         });
-        if (error) setMessage('Could not send the reset email right now. Please try again.');
-        else setMode('sent');
+        if (error) {
+          const msg = 'Could not send the reset email right now. Please try again.';
+          setMessage(msg);
+          addToast(msg, 'error');
+        } else {
+          setMode('sent');
+          addToast('Reset email sent.', 'success');
+        }
       } else if (mode === 'recovery') {
         const { error } = await supabase.auth.updateUser({ password });
-        if (error)
-          setMessage('Could not update the password. Request a new reset link and try again.');
-        else {
-          setMessage('Your password has been updated.');
+        if (error) {
+          const msg = 'Could not update the password. Request a new reset link and try again.';
+          setMessage(msg);
+          addToast(msg, 'error');
+        } else {
+          const msg = 'Your password has been updated.';
+          setMessage(msg);
+          addToast(msg, 'success');
           onAuthenticated?.();
         }
       } else {
         const result =
           mode === 'login'
-            ? await supabase.auth.signInWithPassword({
-                email: email.trim(),
-                password,
-              })
+            ? await supabase.auth.signInWithPassword({ email: email.trim(), password })
             : await supabase.auth.signUp({ email: email.trim(), password });
-        if (result.error)
-          setMessage('Unable to authenticate with those details. Check them and try again.');
-        else if (mode === 'signup' && !result.data.session)
-          setMessage('Check your email to confirm your account, then sign in.');
-        else if (result.data.session) onAuthenticated?.();
+        if (result.error) {
+          const msg = 'Unable to authenticate with those details. Check them and try again.';
+          setMessage(msg);
+          addToast(msg, 'error');
+        } else if (mode === 'signup' && !result.data.session) {
+          const msg = 'Check your email to confirm your account, then sign in.';
+          setMessage(msg);
+          addToast(msg, 'warning');
+        } else if (result.data.session) {
+          addToast('Successfully signed in.', 'success');
+          onAuthenticated?.();
+        }
       }
     } catch {
-      setMessage('Could not reach the authentication service. Please try again.');
+      const msg = 'Could not reach the authentication service. Please try again.';
+      setMessage(msg);
+      addToast(msg, 'error');
     } finally {
       setBusy(false);
     }
@@ -71,22 +93,23 @@ export function AuthScreen({
     mode === 'recovery'
       ? 'Choose a new password'
       : mode === 'reset'
-        ? 'Reset your password'
-        : mode === 'sent'
-          ? 'Check your inbox'
-          : mode === 'login'
-            ? 'Welcome back'
-            : 'Create your account';
+      ? 'Reset your password'
+      : mode === 'sent'
+      ? 'Check your inbox'
+      : mode === 'login'
+      ? 'Welcome back'
+      : 'Create your account';
+
   const description =
     mode === 'recovery'
       ? 'Use at least 8 characters for your new password.'
       : mode === 'reset'
-        ? 'We’ll email a secure link if an account exists for that address.'
-        : mode === 'sent'
-          ? 'If an account exists for that email, a reset link is on its way.'
-          : mode === 'login'
-            ? 'Sign in to continue to Keeper.'
-            : 'Create an account for Keeper.';
+      ? 'We’ll email a secure link if an account exists for that address.'
+      : mode === 'sent'
+      ? 'If an account exists for that email, a reset link is on its way.'
+      : mode === 'login'
+      ? 'Sign in to continue to Keeper.'
+      : 'Create an account for Keeper.';
 
   return (
     <main className="auth-screen">
@@ -147,7 +170,7 @@ export function AuthScreen({
                   <button
                     className="auth-field-toggle"
                     type="button"
-                    onClick={() => setShowPassword((value) => !value)}
+                    onClick={() => setShowPassword((v) => !v)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                     aria-pressed={showPassword}
                   >
@@ -174,7 +197,7 @@ export function AuthScreen({
                       <button
                         className="auth-field-toggle"
                         type="button"
-                        onClick={() => setShowPassword((value) => !value)}
+                        onClick={() => setShowPassword((v) => !v)}
                         aria-label={showPassword ? 'Hide password' : 'Show password'}
                         aria-pressed={showPassword}
                       >
@@ -198,63 +221,11 @@ export function AuthScreen({
               type="submit"
               disabled={busy || !supabase}
             >
-              {busy
-                ? 'Please wait…'
-                : mode === 'reset'
-                  ? 'Send reset link'
-                  : mode === 'recovery'
-                    ? 'Update password'
-                    : mode === 'login'
-                      ? 'Sign in'
-                      : 'Create account'}{' '}
-              <ArrowUpRight size={15} />
+              {busy ? 'Please wait…' : mode === 'reset' ? 'Send reset link' : mode === 'signup' ? 'Create account' : 'Sign in'}
             </button>
-            {!supabase && (
-              <p className="auth-message" role="alert">
-                Authentication is not configured. Add the Supabase environment variables to
-                continue.
-              </p>
-            )}
-            {mode === 'login' && (
-              <button
-                className="auth-switch"
-                type="button"
-                onClick={() => {
-                  setMode('reset');
-                  setMessage('');
-                }}
-              >
-                Forgot password?
-              </button>
-            )}
-            {(mode === 'login' || mode === 'signup') && (
-              <button
-                className="auth-switch"
-                type="button"
-                onClick={() => {
-                  setMode(mode === 'login' ? 'signup' : 'login');
-                  setMessage('');
-                }}
-              >
-                {mode === 'login'
-                  ? 'New to Keeper? Create an account'
-                  : 'Already have an account? Sign in'}
-              </button>
-            )}
-            {(mode === 'reset' || mode === 'recovery') && (
-              <button
-                className="auth-switch"
-                type="button"
-                onClick={() => {
-                  setMode('login');
-                  setMessage('');
-                }}
-              >
-                Return to sign in
-              </button>
-            )}
           </form>
         )}
+        <ToastStack toasts={toasts} onDismiss={dismissToast} />
       </section>
     </main>
   );
