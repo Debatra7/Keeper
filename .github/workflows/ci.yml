@@ -78,8 +78,8 @@ jobs:
                 echo "Error: Migration filename $filename does not follow timestamp convention YYYYMMDDHHMMSS_name.sql"
                 exit 1
               fi
-              # Check for basic SQL validity / unbalanced quotes
-              if grep -q $'\x00' "$file"; then
+              # Check for basic SQL validity / null bytes
+              if grep -P -q '\x00' "$file"; then
                 echo "Error: Null byte detected in $filename"
                 exit 1
               fi
