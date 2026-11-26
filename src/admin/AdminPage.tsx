@@ -1,18 +1,17 @@
 import { useState } from 'react';
 import { AdminAuth } from './AdminAuth';
 import { AdminDashboard } from './AdminDashboard';
+import { isAdminAuthenticated, clearAdminSession } from '../lib/adminAuth';
 
 interface AdminPageProps {
   onExit: () => void;
 }
 
 export function AdminPage({ onExit }: AdminPageProps) {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return sessionStorage.getItem('keeper_dev_admin_authenticated') === 'true';
-  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => isAdminAuthenticated());
 
   const handleLogout = () => {
-    sessionStorage.removeItem('keeper_dev_admin_authenticated');
+    clearAdminSession();
     setIsAuthenticated(false);
   };
 

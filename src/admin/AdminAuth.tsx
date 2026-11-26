@@ -10,6 +10,7 @@ import {
   CardContent,
   CardFooter,
 } from './components/ui/card';
+import { verifyAdminKey } from '../lib/adminAuth';
 
 interface AdminAuthProps {
   onSuccess: () => void;
@@ -19,23 +20,22 @@ interface AdminAuthProps {
 export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
   const [keyInput, setKeyInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    const configuredKey = import.meta.env.VITE_ADMIN_KEY;
+    if (busy) return;
+    setBusy(true);
+    setError(null);
 
-    if (!configuredKey) {
-      setError('Admin key is not configured in environment variables.');
-      return;
-    }
+    const result = await verifyAdminKey(keyInput.trim());
 
-    if (keyInput.trim() === configuredKey.trim()) {
-      sessionStorage.setItem('keeper_dev_admin_authenticated', 'true');
-      setError(null);
+    if (result.ok) {
       onSuccess();
     } else {
-      setError('Invalid developer admin key. Access denied.');
+      setError(result.error);
     }
+    setBusy(false);
   };
 
   return (
@@ -58,7 +58,8 @@ export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">Developer Dashboard</CardTitle>
           <CardDescription className="text-neutral-400">
-            Protected developer access. Enter the admin key configured in your environment.
+            Protected developer access. Your key is verified server-side and never stored in the
+            app.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
@@ -77,6 +78,7 @@ export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
                 }}
                 autoFocus
                 autoComplete="current-password"
+                disabled={busy}
                 className="bg-neutral-950 border-neutral-700 text-neutral-100 focus-visible:ring-indigo-500"
               />
             </div>
@@ -91,12 +93,13 @@ export function AdminAuth({ onSuccess, onExit }: AdminAuthProps) {
           <CardFooter className="flex flex-col gap-3">
             <Button
               type="submit"
+              disabled={busy}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium h-10"
             >
-              Verify &amp; Access Dashboard
+              {busy ? 'Verifying…' : 'Verify & Access Dashboard'}
             </Button>
             <p className="text-[11px] text-neutral-500 text-center">
-              Requires a valid <code>VITE_ADMIN_KEY</code> environment credential.
+              Key is validated server-side — it is never exposed in the browser.
             </p>
           </CardFooter>
         </form>
