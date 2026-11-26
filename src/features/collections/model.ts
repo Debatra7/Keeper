@@ -12,7 +12,7 @@ export const faviconFor = (url: string) => `https://www.google.com/s2/favicons?d
 export const readCollections = (): Collection[] => {
   try {
     const saved = localStorage.getItem('keeper-data');
-    if (!saved) return [];
+    if (saved === null) return [{ id: createId(), name: 'Favorites', color: '', sites: [] }];
     const document = normalizeDocument({ collections: JSON.parse(saved), preferences: { accent: '#000000', background: 'solid', color1: '#000000', color2: '#000000', image: '', font: 'Roboto', size: 16 }, profile: { name: '' }, widgets: [], checkpoints: [] });
     return document?.collections ?? [];
   } catch { return []; }

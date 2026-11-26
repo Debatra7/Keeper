@@ -140,7 +140,7 @@ function App() {
       session,
       documentSnapshot,
       remoteDoc => {
-        setCollections(remoteDoc.collections);
+        setCollections(current => remoteDoc.collections.length ? remoteDoc.collections : current);
         setPreferences(remoteDoc.preferences);
         setProfile(current => {
           const remoteProfile = remoteDoc.profile ?? { name: defaultDisplayName, email: '' };

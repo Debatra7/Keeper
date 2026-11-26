@@ -58,6 +58,7 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
+  const [visiblePassword, setVisiblePassword] = useState<'current' | 'new' | 'confirm' | null>(null);
   const [draftCollectionStyles, setDraftCollectionStyles] = useState<Record<string, Partial<Pick<Collection, 'color' | 'font' | 'nameFont' | 'titleFontSize' | 'cardFont' | 'cardFontSize'>>>>(() => Object.fromEntries(collections.map(collection => [collection.id, { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }])));
   useEffect(() => setSection(initialSection), [initialSection]);
   useEffect(() => { setDraftCollectionStyles(current => Object.fromEntries(collections.map(collection => [collection.id, current[collection.id] ?? { color: collection.color, font: collection.font, nameFont: collection.nameFont, titleFontSize: collection.titleFontSize, cardFont: collection.cardFont, cardFontSize: collection.cardFontSize }]))); }, [collections]);
@@ -91,18 +92,20 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
   const changePassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!supabase || passwordBusy) return;
-    if (newPassword !== confirmNewPassword) { setPasswordMessage('New passwords do not match.'); return; }
+    if (newPassword !== confirmNewPassword) { setPasswordMessage('New passwords do not match.'); onNotify('Password was not changed: new passwords do not match.', 'error'); return; }
     setPasswordBusy(true);
     setPasswordMessage('');
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: userEmail, password: currentPassword });
-      if (signInError) { setPasswordMessage('Current password is incorrect.'); return; }
+      if (signInError) { setPasswordMessage('Current password is incorrect. Your password was not changed.'); onNotify('Password was not changed: current password is incorrect.', 'error'); return; }
       const { error } = await supabase.auth.updateUser({ password: newPassword });
-      if (error) { setPasswordMessage('Could not update the password. Please try again.'); return; }
+      if (error) { setPasswordMessage('Password could not be changed. Please try again.'); onNotify('Password could not be changed. Please try again.', 'error'); return; }
       setCurrentPassword(''); setNewPassword(''); setConfirmNewPassword('');
       setPasswordMessage('Your password has been updated.');
+      onNotify('Password changed successfully.', 'success');
     } catch {
-      setPasswordMessage('Could not reach the authentication service. Please try again.');
+      setPasswordMessage('Password could not be changed because the authentication service could not be reached. Please try again.');
+      onNotify('Password could not be changed: authentication service unavailable.', 'error');
     } finally {
       setPasswordBusy(false);
     }
@@ -176,9 +179,9 @@ export function SettingsPanel({ preferences, setPreferences, onAppearancePreview
         {isAuthenticated && <details className="profile-password-disclosure">
           <summary>Change password</summary>
           <form className="profile-password-form" onSubmit={changePassword}>
-          <label className="collection-setting-label">Current password<input className="field settings-input" type="password" autoComplete="current-password" required maxLength={1024} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}/></label>
-          <label className="collection-setting-label">New password<input className="field settings-input" type="password" autoComplete="new-password" required minLength={8} maxLength={1024} value={newPassword} onChange={e => setNewPassword(e.target.value)}/></label>
-          <label className="collection-setting-label">Confirm new password<input className="field settings-input" type="password" autoComplete="new-password" required minLength={8} maxLength={1024} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}/></label>
+          <label className="collection-setting-label">Current password<div className="auth-field-wrap"><input className="field settings-input" type={visiblePassword === 'current' ? 'text' : 'password'} autoComplete="current-password" required maxLength={1024} value={currentPassword} onChange={e => setCurrentPassword(e.target.value)}/><button type="button" className="auth-field-toggle" onClick={() => setVisiblePassword(value => value === 'current' ? null : 'current')} aria-label={visiblePassword === 'current' ? 'Hide current password' : 'Show current password'} aria-pressed={visiblePassword === 'current'}>{visiblePassword === 'current' ? <EyeOff size={15}/> : <Eye size={15}/>}</button></div></label>
+          <label className="collection-setting-label">New password<div className="auth-field-wrap"><input className="field settings-input" type={visiblePassword === 'new' ? 'text' : 'password'} autoComplete="new-password" required minLength={8} maxLength={1024} value={newPassword} onChange={e => setNewPassword(e.target.value)}/><button type="button" className="auth-field-toggle" onClick={() => setVisiblePassword(value => value === 'new' ? null : 'new')} aria-label={visiblePassword === 'new' ? 'Hide new password' : 'Show new password'} aria-pressed={visiblePassword === 'new'}>{visiblePassword === 'new' ? <EyeOff size={15}/> : <Eye size={15}/>}</button></div></label>
+          <label className="collection-setting-label">Confirm new password<div className="auth-field-wrap"><input className="field settings-input" type={visiblePassword === 'confirm' ? 'text' : 'password'} autoComplete="new-password" required minLength={8} maxLength={1024} value={confirmNewPassword} onChange={e => setConfirmNewPassword(e.target.value)}/><button type="button" className="auth-field-toggle" onClick={() => setVisiblePassword(value => value === 'confirm' ? null : 'confirm')} aria-label={visiblePassword === 'confirm' ? 'Hide confirmation password' : 'Show confirmation password'} aria-pressed={visiblePassword === 'confirm'}>{visiblePassword === 'confirm' ? <EyeOff size={15}/> : <Eye size={15}/>}</button></div></label>
           <small className="settings-help">Use at least 8 characters.</small>
           {passwordMessage && <p className="profile-password-message" role="status">{passwordMessage}</p>}
             <button className="primary-button profile-auth-button" type="submit" disabled={passwordBusy || !supabase}>{passwordBusy ? 'Updating…' : 'Update password'}</button>
