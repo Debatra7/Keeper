@@ -1,10 +1,13 @@
-import { useState, type FormEvent } from 'react';
+
 import { ArrowUpRight, Eye, EyeOff, LockKeyhole } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 type AuthMode = 'login' | 'signup' | 'reset' | 'recovery' | 'sent';
 
+import { ToastStack, Toast } from '../../components/ToastStack';
+
 export function AuthScreen({
+
   onAuthenticated,
   recovery = false,
 }: {
