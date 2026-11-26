@@ -83,7 +83,7 @@ jobs:
 
       - name: Post Preview URL Comment to Pull Request
         if: steps.check-secrets.outputs.has_token == 'true' && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const previewUrl = '${{ steps.vercel-preview.outputs.url }}';
