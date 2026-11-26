@@ -1,4 +1,4 @@
-import type { Collection, Site } from '../../features/collections/types';
+import type { Collection, Site } from '../../components/types';
 import type { DashboardWidget } from '../../features/dashboard/DashboardWidgets';
 import type { DataBackup } from '../../features/settings/SettingsPanel';
 import type { KeeperDocument } from '../validation';

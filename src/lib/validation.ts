@@ -1,4 +1,4 @@
-import type { Collection, Site } from '../features/collections/types';
+import type { Collection, Site } from '../components/types';
 import { FONT_OPTIONS, type Preferences } from '../features/settings/preferences';
 import { FONT_SIZES, type FontSize } from '../components/FontSelector';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';

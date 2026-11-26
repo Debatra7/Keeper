@@ -1,4 +1,4 @@
-import type { Collection } from './types';
+import type { Collection } from '../../components/types';
 import { normalizeDocument, safeWebsiteUrl } from '../../lib/validation';
 
 export const createId = () => Math.random().toString(36).slice(2, 10);
@@ -12,7 +12,16 @@ export const faviconFor = (url: string) => `https://www.google.com/s2/favicons?d
 export const readCollections = (): Collection[] => {
   try {
     const saved = localStorage.getItem('keeper-data');
-    if (saved === null) return [{ id: createId(), name: 'Favorites', color: '', sites: [] }];
+    if (saved === null) return [{
+      id: createId(),
+      name: 'Favorites',
+      color: '',
+      sites: [
+        { id: createId(), name: 'YouTube', url: 'https://www.youtube.com' },
+        { id: createId(), name: 'Gmail', url: 'https://mail.google.com' },
+        { id: createId(), name: 'ChatGPT', url: 'https://chatgpt.com' },
+      ],
+    }];
     const document = normalizeDocument({ collections: JSON.parse(saved), preferences: { accent: '#000000', background: 'solid', color1: '#000000', color2: '#000000', image: '', font: 'Roboto', size: 16 }, profile: { name: '' }, widgets: [], checkpoints: [] });
     return document?.collections ?? [];
   } catch { return []; }

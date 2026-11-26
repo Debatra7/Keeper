@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react';
 import { CSS } from '@dnd-kit/utilities';
 import { useSortable } from '@dnd-kit/sortable';
-import type { Collection } from './types';
+import type { Collection } from '../../components/types';
 
 export function CollectionTab({ collection, active, accent, onSelect, onContextMenu }: { collection: Collection; active: boolean; accent: string; onSelect: () => void; onContextMenu: (event: MouseEvent<HTMLButtonElement>) => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isOver, isDragging } = useSortable({

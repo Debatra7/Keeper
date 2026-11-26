@@ -1,18 +1,45 @@
 import { useEffect, useCallback } from 'react';
 
-/** Returns true when the event originates from a text-entry element. */
-function isTyping(e: KeyboardEvent): boolean {
-  const tag = (e.target as HTMLElement)?.tagName;
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+export type ShortcutAction = 'add-site' | 'dashboard' | 'search' | 'settings' | 'help';
+export type ShortcutBinding = { key: string; ctrl: boolean; shift: boolean; alt: boolean };
+export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding | null> = {
+  search: { key: 'k', ctrl: true, shift: false, alt: false },
+  'add-site': { key: 'a', ctrl: true, shift: true, alt: false },
+  dashboard: { key: 'h', ctrl: true, shift: true, alt: false },
+  settings: { key: ',', ctrl: true, shift: false, alt: false },
+  help: { key: '/', ctrl: true, shift: false, alt: false },
+};
+const SHORTCUTS_STORAGE_KEY = 'keeper-shortcuts';
+const SHORTCUTS_CHANGE_EVENT = 'keeper:shortcuts-change';
+const PREVIOUS_DEFAULTS: Partial<Record<ShortcutAction, ShortcutBinding[]>> = {
+  search: [{ key: 'k', ctrl: true, shift: false, alt: false }],
+};
+
+export function readShortcutBindings(): Record<ShortcutAction, ShortcutBinding | null> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(SHORTCUTS_STORAGE_KEY) || 'null');
+    if (!saved || typeof saved !== 'object') return DEFAULT_SHORTCUTS;
+    return Object.fromEntries(Object.entries(DEFAULT_SHORTCUTS).map(([action, fallback]) => {
+      const value = (saved as Record<string, unknown>)[action];
+      const valid = value && typeof value === 'object' && typeof (value as ShortcutBinding).key === 'string' && ['ctrl', 'shift', 'alt'].every(key => typeof (value as unknown as Record<string, unknown>)[key] === 'boolean');
+      const binding = valid ? value as ShortcutBinding : fallback;
+      const previous = PREVIOUS_DEFAULTS[action as ShortcutAction];
+      const wasPreviousDefault = previous?.some(item => Object.keys(item).every(key => (binding as unknown as Record<string, unknown>)[key] === (item as unknown as Record<string, unknown>)[key]));
+      return [action, valid && wasPreviousDefault ? fallback : binding];
+    })) as Record<ShortcutAction, ShortcutBinding | null>;
+  } catch { return DEFAULT_SHORTCUTS; }
 }
 
-export type ShortcutAction =
-  | 'add-site'
-  | 'new-collection'
-  | 'dashboard'
-  | 'search'
-  | 'settings'
-  | 'help';
+export function saveShortcutBindings(bindings: Record<ShortcutAction, ShortcutBinding | null>): void {
+  try { localStorage.setItem(SHORTCUTS_STORAGE_KEY, JSON.stringify(bindings)); } catch { /* Keep shortcut changes in this page session. */ }
+  window.dispatchEvent(new Event(SHORTCUTS_CHANGE_EVENT));
+}
+
+/** Returns true when the event originates from a text-entry element. */
+function isTyping(e: KeyboardEvent): boolean {
+  const target = e.target as HTMLElement;
+  return target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName);
+}
 
 export interface ShortcutEvent {
   action: ShortcutAction;
@@ -27,36 +54,8 @@ interface Options {
 
 /**
  * Registers global keyboard shortcuts for Keeper.
- * All shortcuts use Ctrl (⌘ on macOS) and are carefully chosen to avoid
- * browser-level conflicts.
- *
- * CONFLICT ANALYSIS
- * ─────────────────
- * REMOVED / CHANGED from previous version:
- *   Ctrl+A  → "Select All"      — browser intercepts first          → Ctrl+Shift+A
- *   Ctrl+N  → "New Window"      — JS CANNOT preventDefault() this   → Ctrl+Shift+K
- *   Ctrl+D  → "Bookmark page"   — browser intercepts first          → Ctrl+Shift+H
- *   Ctrl+1–9→ "Switch tab 1–9"  — JS CANNOT preventDefault() this   → REMOVED
- *
- * KEPT (zero browser conflict):
- *   Ctrl+K  → no standard browser binding (app pattern: VS Code, Linear, Slack)
- *   Ctrl+,  → no standard browser binding (universal settings pattern)
- *   Ctrl+/  → no standard browser binding
- *   Escape  → handled separately; never conflicts
- *
- * SAFE NEW BINDINGS:
- *   Ctrl+Shift+A  → Ctrl+A (select-all) conflict fully avoided via Shift
- *   Ctrl+Shift+H  → Ctrl+H opens History; the Shift variant is UNBOUND in all major browsers
- *   Ctrl+Shift+K  → No universal binding in Chrome/Edge; Firefox console is developer-only
- *
- * Shortcut map:
- *   Ctrl+K         → Quick search
- *   Ctrl+Shift+A   → Add a website (only when inside a collection)
- *   Ctrl+Shift+K   → New collection
- *   Ctrl+Shift+H   → Home / Dashboard
- *   Ctrl+,         → Settings
- *   Ctrl+/         → Keyboard shortcuts help
- *   Escape         → Close / dismiss  (handled in App.tsx directly)
+ * Shortcuts use Ctrl (⌘ on macOS). Matching page-delivered events are
+ * intercepted in capture phase; browser-reserved commands may preempt a page.
  */
 export function useKeyboardShortcuts({
   hasActiveCollection,
@@ -64,81 +63,26 @@ export function useKeyboardShortcuts({
 }: Options) {
   const handler = useCallback(
     (e: KeyboardEvent) => {
-      const ctrl = e.ctrlKey || e.metaKey;
-      if (!ctrl) return;
-
+      if ((window as Window & { __keeperShortcutRecording?: boolean }).__keeperShortcutRecording) return;
       const typing = isTyping(e);
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (!ctrl && !e.altKey) return;
       const key = e.key.toLowerCase();
-      const shift = e.shiftKey;
-
-      // ── Ctrl+K ─ Quick search ────────────────────────────────────────────
-      // No browser conflict. Established app shortcut (VS Code, Slack, Linear).
-      if (key === 'k' && !shift && !typing) {
-        e.preventDefault();
-        onShortcut({ action: 'search' });
-        return;
-      }
-
-      // ── Ctrl+Shift+A ─ Add a website ─────────────────────────────────────
-      // Plain Ctrl+A = "Select All" — a universal browser/OS binding we must
-      // not steal. Adding Shift makes it collision-free across all browsers.
-      // Only fires when the user is inside an active collection.
-      if (key === 'a' && shift && !typing) {
-        if (hasActiveCollection) {
-          e.preventDefault();
-          onShortcut({ action: 'add-site' });
-        }
-        return;
-      }
-
-      // ── Ctrl+Shift+K ─ New collection ────────────────────────────────────
-      // Ctrl+N = "New Window" — JS cannot preventDefault() this; the browser
-      // acts on it before the event reaches the page. Ctrl+Shift+N = Incognito.
-      // Ctrl+Shift+K: no binding in Chrome/Edge. Firefox uses it for the
-      // Browser Console (a developer tool, not everyday user path).
-      if (key === 'k' && shift && !typing) {
-        e.preventDefault();
-        onShortcut({ action: 'new-collection' });
-        return;
-      }
-
-      // ── Ctrl+Shift+H ─ Home / Dashboard ──────────────────────────────────
-      // Ctrl+D = "Bookmark this page" in Chrome/Edge/Firefox.
-      // Ctrl+H = "Open History" — also a browser binding.
-      // Ctrl+Shift+H has NO standard binding in Chrome, Edge, Firefox, or Safari.
-      if (key === 'h' && shift && !typing) {
-        e.preventDefault();
-        onShortcut({ action: 'dashboard' });
-        return;
-      }
-
-      // ── Ctrl+, ─ Settings ─────────────────────────────────────────────────
-      // The universal settings shortcut across desktop apps (VS Code, Slack,
-      // Discord, Figma, etc.). No browser ever uses this key combination.
-      if (key === ',' && !shift && !typing) {
-        e.preventDefault();
-        onShortcut({ action: 'settings' });
-        return;
-      }
-
-      // ── Ctrl+/ ─ Keyboard shortcuts help ─────────────────────────────────
-      // No browser binding. Slash is widely used for "show help / shortcuts"
-      // in web apps (GitHub, Notion, Linear).
-      if (key === '/' && !shift && !typing) {
-        e.preventDefault();
-        onShortcut({ action: 'help' });
-        return;
-      }
-
-      // NOTE: Ctrl+1–9 (jump to collection) was deliberately removed.
-      // Those key combos switch browser tabs at the OS/browser level and
-      // cannot be intercepted via preventDefault() in any major browser.
+      const bindings = readShortcutBindings();
+      const match = (Object.entries(bindings) as [ShortcutAction, (ShortcutBinding | null)][]).find(([, binding]) =>
+        !!binding && binding.key.toLowerCase() === key && binding.ctrl === ctrl && binding.shift === e.shiftKey && binding.alt === e.altKey
+      );
+      if (!match) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if ((typing && match[0] !== 'search') || e.repeat || (match[0] === 'add-site' && !hasActiveCollection)) return;
+      onShortcut({ action: match[0] });
     },
     [hasActiveCollection, onShortcut]
   );
 
   useEffect(() => {
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
   }, [handler]);
 }

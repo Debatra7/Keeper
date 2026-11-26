@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Command, Compass, ExternalLink, FolderPlus, Home, Link2, LockKeyhole, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
+import { ArrowUpRight, CalendarDays, Check, ChevronLeft, ChevronRight, Clock3, Compass, ExternalLink, FolderPlus, Home, Link2, LockKeyhole, Plus, Search, Settings, TriangleAlert, X } from 'lucide-react';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, closestCenter, pointerWithin, useSensor, useSensors } from '@dnd-kit/core';
 import type { DragEndEvent, Modifier } from '@dnd-kit/core';
 import { SortableContext, arrayMove, horizontalListSortingStrategy, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CollectionGrid, SiteDragPreview } from '../features/collections/CollectionGrid';
 import { CollectionTab } from '../features/collections/CollectionTab';
-import { createId, domainOf, faviconFor, readCollections } from '../features/collections/model';
+import { createId, domainOf, readCollections } from '../features/collections/model';
+import { GlobalSearch } from '../components/GlobalSearch';
 import { ColorPicker } from '../components/ColorPicker';
-import type { Collection, Site } from '../features/collections/types';
+import type { Collection, Site } from '../components/types';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';
 import { defaultPreferences, readPreferences } from '../features/settings/preferences';
@@ -48,6 +49,7 @@ function App() {
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const [editing, setEditing] = useState<Site | null>(null);
   const [search, setSearch] = useState('');
+  const [searchFocusRequest, setSearchFocusRequest] = useState(0);
   const [menu, setMenu] = useState<Menu>(null);
   const [queryOpen, setQueryOpen] = useState(false);
   const [newName, setNewName] = useState('');
@@ -110,7 +112,6 @@ function App() {
   const showAddCollection = collectionPage === Math.floor(collections.length / 6);
   useLayoutEffect(() => { setCollectionPageIndex(index => Math.min(index, collectionPageCount - 1)); }, [collectionPageCount]);
   const allSites = useMemo(() => collections.flatMap(c => c.sites.map(site => ({ ...site, collection: c.name }))), [collections]);
-  const results = useMemo(() => search.trim() ? allSites.filter(s => `${s.name} ${s.url} ${s.collection}`.toLowerCase().includes(search.toLowerCase())) : [], [allSites, search]);
 
   useEffect(() => { try { localStorage.setItem('keeper-data', JSON.stringify(collections)); } catch { /* Keep edits in memory if storage is full. */ } }, [collections]);
   useEffect(() => { try { localStorage.setItem('keeper-profile', JSON.stringify(profile)); } catch { /* Keep profile changes in memory if storage is unavailable. */ } }, [profile]);
@@ -224,9 +225,8 @@ function App() {
 
   // Keyboard shortcut handler
   const handleShortcut = useCallback<Parameters<typeof useKeyboardShortcuts>[0]['onShortcut']>(({ action }) => {
-    if (action === 'search')         { setQueryOpen(true); }
+    if (action === 'search')         { setQueryOpen(true); setSearchFocusRequest(request => request + 1); }
     if (action === 'add-site')       { openSiteModal(); }
-    if (action === 'new-collection') { openCollectionModal(); }
     if (action === 'dashboard')      { setActive(null); }
     if (action === 'settings')       { setModal('settings'); }
     if (action === 'help')           { setHelpOpen(v => !v); }
@@ -424,8 +424,8 @@ function App() {
     });
   };
 
-  return <DndContext sensors={sensors} modifiers={[widgetDragModifier]} collisionDetection={args => { if (args.active.data.current?.type === 'widget') return []; const collisions = pointerWithin(args); return collisions.length ? collisions : closestCenter(args); }} onDragStart={({ active: dragged }) => setDraggedSite(collections.flatMap(c => c.sites).find(site => site.id === String(dragged.id)) ?? null)} onDragEnd={event => { handleDragEnd(event); setDraggedSite(null); clearGuides(); }} onDragCancel={() => { setDraggedSite(null); clearGuides(); }}><main ref={appRef} className="app" onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}>
-    <header className="topbar dashboard-topbar">
+  return <DndContext sensors={sensors} modifiers={[widgetDragModifier]} collisionDetection={args => { if (args.active.data.current?.type === 'widget') return []; const collisions = pointerWithin(args); return collisions.length ? collisions : closestCenter(args); }} onDragStart={({ active: dragged }) => setDraggedSite(collections.flatMap(c => c.sites).find(site => site.id === String(dragged.id)) ?? null)} onDragEnd={event => { handleDragEnd(event); setDraggedSite(null); clearGuides(); }} onDragCancel={() => { setDraggedSite(null); clearGuides(); }}><main ref={appRef} className="app relative flex min-h-screen flex-col overflow-hidden font-[var(--ui-font)] text-[var(--text)]" onContextMenu={e => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }}>
+    <header className="topbar dashboard-topbar relative z-[3] flex h-[76px] items-center border-b border-[var(--line)] bg-[rgba(12,13,16,0.62)] px-[5.1%] backdrop-blur-[22px] backdrop-saturate-[130%] max-[760px]:h-[65px] max-[760px]:px-[18px]">
       <div className="collections-strip">
         <button className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`} aria-label="Previous 6 collections" title="Previous 6 collections" disabled={collectionPage === 0} onClick={() => setCollectionPageIndex(page => Math.max(0, page - 1))}><ChevronLeft size={17}/></button>
         <div className="collection-box">
@@ -445,7 +445,8 @@ function App() {
       </div>
     </header>
 
-    {!current ? <section className="home dashboard-home">
+    <GlobalSearch variant="palette" value={search} setValue={setSearch} sites={allSites} open={!!current && queryOpen} setOpen={setQueryOpen} focusRequest={searchFocusRequest}/>
+    {!current ? <section className="home dashboard-home relative grid min-h-[570px] flex-1 place-items-center px-6 pt-[70px] pb-[100px] max-[760px]:min-h-[calc(100vh-111px)] max-[760px]:pt-[50px]">
       <DashboardWidgets
         widgets={widgets}
         onRemove={id => {
@@ -458,15 +459,13 @@ function App() {
         }}
       />
       {alignmentGuides.map((guide, index) => <span key={`${guide.axis}-${guide.position}-${index}`} aria-hidden="true" className={`alignment-guide alignment-guide-${guide.axis}`} style={guide.axis === 'x' ? { left: guide.position } : { top: guide.position }}/>) }
-      <div className="hero-copy"><div className={`search-wrap search-draggable ${searchDragging ? 'is-dragging' : ''}`} style={{ transform: `translate3d(${searchPosition.x}px, ${searchPosition.y}px, 0)` }} onPointerDown={startSearchDrag} onPointerMove={moveSearch} onPointerUp={endSearchDrag} onPointerCancel={endSearchDrag}><Search size={19} className="search-icon"/><input value={search} onChange={e => setSearch(e.target.value)} onFocus={() => setQueryOpen(true)} onKeyDown={e => { if (e.key === 'Enter' && search.trim()) { window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank'); } }} placeholder="Search the web or your saved places..."/><kbd><Command size={11}/> K</kbd><button className="search-go" aria-label="Search" onClick={() => search.trim() && window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><ArrowUpRight size={17}/></button>
-        {queryOpen && search.trim() && <div className="search-results">{results.slice(0, 5).map(s => <a key={s.id} href={`https://${s.url}`} className="search-result"><img src={faviconFor(s.url)}/><span>{s.name}</span><small>{s.collection}</small></a>)}<button className="web-result" onClick={() => window.open(`https://www.google.com/search?q=${encodeURIComponent(search)}`, '_blank')}><Search size={14}/> Search the web for “{search}”</button></div>}</div>
-      </div>
+      <div className="hero-copy"><GlobalSearch variant="home" value={search} setValue={setSearch} sites={allSites} open={queryOpen} setOpen={setQueryOpen} focusRequest={searchFocusRequest} position={searchPosition} dragging={searchDragging} onPointerDown={startSearchDrag} onPointerMove={moveSearch} onPointerUp={endSearchDrag}/></div>
       <div className="dashboard-footer-controls">
         <div className="dashboard-add-controls" onClick={event => event.stopPropagation()}><button className="settings-fab dashboard-add-fab" aria-label="Add widget" title="Add widget" aria-expanded={widgetPickerOpen} onClick={() => setWidgetPickerOpen(open => !open)}><Plus size={19}/></button>{widgetPickerOpen && <div className="widget-picker"><div className="widget-picker-heading">ADD A WIDGET</div><button onClick={() => addWidget('clock')}><Clock3 size={16}/> Clock</button><button onClick={() => addWidget('calendar')}><CalendarDays size={16}/> Calendar</button></div>}</div>
         <button className="dashboard-shortcuts-link" title="Open keyboard shortcuts" onClick={() => setHelpOpen(true)}><span>Keyboard shortcuts</span><kbd>Ctrl</kbd><span className="shortcuts-plus">+</span><kbd>/</kbd></button>
         <button className="settings-fab dashboard-settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>
       </div>
-    </section> : <section className="collection-page" style={{ '--collection-color': current.color || preferences.accent, '--collection-font': current.cardFont ? `'${current.cardFont}', sans-serif` : current.font ? `'${current.font}', sans-serif` : 'var(--ui-font)', '--card-font-size': `${current.cardFontSize ?? preferences.size}px` } as CSSProperties}>
+    </section> : <section className="collection-page mx-auto flex min-h-[calc(100vh-122px)] w-[calc(100%-64px)] flex-1 flex-col pt-6 pb-4 max-[760px]:min-h-[calc(100vh-111px)] max-[760px]:w-[calc(100%-32px)] max-[760px]:pt-4 max-[760px]:pb-[10px] max-[430px]:w-[calc(100%-24px)] max-[430px]:pt-3" style={{ '--collection-color': current.color || preferences.accent, '--collection-font': current.cardFont ? `'${current.cardFont}', sans-serif` : current.font ? `'${current.font}', sans-serif` : 'var(--ui-font)', '--card-font-size': `${current.cardFontSize ?? preferences.size}px` } as CSSProperties}>
       <CollectionGrid collection={current} onContextMenu={(site, e) => { e.preventDefault(); e.stopPropagation(); setMenu({ x: e.clientX, y: e.clientY, site }); }} onMenu={(site, rect) => setMenu({ x: rect.right, y: rect.bottom, site })} onAdd={() => openSiteModal()}/>
       <button className="footer-home collection-dashboard-home" onClick={() => setActive(null)}><Home size={15}/><span>Home</span></button>
       <button className="settings-fab collection-settings-fab" aria-label="Open settings" title="Settings" onClick={() => { setSettingsSection('appearance'); setModal('settings'); }}><Settings size={18}/></button>

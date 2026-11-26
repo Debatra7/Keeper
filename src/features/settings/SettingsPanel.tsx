@@ -1,6 +1,6 @@
 import { useEffect, useState, type Dispatch, type FormEvent, type SetStateAction } from 'react';
 import { AlertCircle, Check, Database, Download, Eye, EyeOff, FileUp, Folder, Info, LogIn, Palette, PauseCircle, RotateCcw, Settings, Trash2 } from 'lucide-react';
-import type { Collection } from '../collections/types';
+import type { Collection } from '../../components/types';
 import { ColorPicker } from '../../components/ColorPicker';
 import { FontSelector } from '../../components/FontSelector';
 import { FontSizeSelector, type FontSize } from '../../components/FontSelector';
