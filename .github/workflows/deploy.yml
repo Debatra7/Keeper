@@ -184,7 +184,7 @@ jobs:
 
       - name: Setup Supabase CLI
         if: steps.check-supabase.outputs.has_creds == 'true'
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           version: latest
 
