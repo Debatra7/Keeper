@@ -25,7 +25,7 @@ import {
   fetchRemoteSiteConfig,
   applySiteConfigToDocument,
 } from './siteConfig';
-import { type DeveloperSiteConfig, INITIAL_SITE_CONFIG } from './types';
+import { type DeveloperSiteConfig } from './types';
 import type { FontSize } from '../components/FontSelector';
 
 interface AdminDashboardProps {
