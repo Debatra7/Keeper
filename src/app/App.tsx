@@ -1,24 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from 'react';
-import {
-  ArrowUpRight,
-  CalendarDays,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Compass,
-  ExternalLink,
-  FolderPlus,
-  Home,
-  Link2,
-  LockKeyhole,
-  Plus,
-  Search,
-  Settings,
-  TriangleAlert,
-  X,
-} from 'lucide-react';
+import { CalendarDays, Clock3, Home, Plus, Settings, X } from 'lucide-react';
 import {
   DndContext,
   DragOverlay,
@@ -30,17 +12,10 @@ import {
   useSensors,
 } from '@dnd-kit/core';
 import type { DragEndEvent, Modifier } from '@dnd-kit/core';
-import {
-  SortableContext,
-  arrayMove,
-  horizontalListSortingStrategy,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CollectionGrid, SiteDragPreview } from '../features/collections/CollectionGrid';
-import { CollectionTab } from '../features/collections/CollectionTab';
 import { createId, domainOf, readCollections } from '../features/collections/model';
 import { GlobalSearch } from '../components/GlobalSearch';
-import { ColorPicker } from '../components/ColorPicker';
 import type { Collection, Site } from '../components/types';
 import { SettingsPanel } from '../features/settings/SettingsPanel';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';
@@ -66,20 +41,17 @@ import {
   writeRemoteUserSettings,
 } from '../lib/supabase';
 import { isBackup, normalizeDocument } from '../lib/validation';
-import { SyncStatusBadge } from '../components/SyncStatusBadge';
 import { syncEngine, clearOutbox, resetSyncMetadata } from '../lib/sync';
+import { CollectionModal } from '../features/collections/CollectionModal';
+import { SiteModal } from '../features/collections/SiteModal';
+import { ConfirmDeleteModal } from '../features/collections/ConfirmDeleteModal';
+import { OnboardingModal } from '../components/OnboardingModal';
+import { Topbar } from '../components/Topbar';
+import { ToastStack } from '../components/ToastStack';
+import type { Toast } from '../components/ToastStack';
+import { AppContextMenu } from '../components/AppContextMenu';
+import type { MenuState } from '../components/AppContextMenu';
 
-type Menu = {
-  x: number;
-  y: number;
-  site?: Site;
-  collection?: Collection;
-} | null;
-type Toast = {
-  id: number;
-  message: string;
-  tone: 'success' | 'warning' | 'error';
-};
 const defaultDisplayName = 'user';
 const readLocalUserSettings = (): Record<string, unknown> => {
   try {
@@ -102,6 +74,7 @@ const displayNameFromEmail = (email?: string) => {
     .trim();
   return local ? local.replace(/\b\p{L}/gu, (letter) => letter.toUpperCase()) : defaultDisplayName;
 };
+
 function App() {
   const [session, setSession] = useState<import('@supabase/supabase-js').Session | null>(null);
   const userSettingsRef = useRef(readLocalUserSettings());
@@ -133,7 +106,7 @@ function App() {
   const [editing, setEditing] = useState<Site | null>(null);
   const [search, setSearch] = useState('');
   const [searchFocusRequest, setSearchFocusRequest] = useState(0);
-  const [menu, setMenu] = useState<Menu>(null);
+  const [menu, setMenu] = useState<MenuState>(null);
   const [queryOpen, setQueryOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
@@ -181,6 +154,7 @@ function App() {
   });
   const appRef = useRef<HTMLElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!supabase) return;
     let active = true;
@@ -207,6 +181,7 @@ function App() {
       subscription.unsubscribe();
     };
   }, []);
+
   const persistUserSettings = useCallback(
     (patch: Record<string, unknown>) => {
       const next = { ...userSettingsRef.current, ...patch };
@@ -223,6 +198,7 @@ function App() {
     },
     [session?.user.id]
   );
+
   useEffect(() => {
     const onSettingsChange = (event: Event) => {
       const patch = (event as CustomEvent<Record<string, unknown>>).detail;
@@ -236,6 +212,7 @@ function App() {
       window.removeEventListener('keeper:shortcuts-change', onShortcutsChange);
     };
   }, [persistUserSettings]);
+
   useEffect(() => {
     if (!session?.user.id) return;
     let active = true;
@@ -272,6 +249,7 @@ function App() {
       active = false;
     };
   }, [session?.user.id]);
+
   const [searchDragging, setSearchDragging] = useState(false);
   const [widgets, setWidgets] = useState<DashboardWidget[]>(readWidgets);
   const [widgetPickerOpen, setWidgetPickerOpen] = useState(false);
@@ -290,6 +268,7 @@ function App() {
     height: number;
   } | null>(null);
   const searchPositionRef = useRef(searchPosition);
+
   const publishGuides = useCallback((guides: AlignmentGuide[]) => {
     pendingGuides.current = guides;
     if (guideFrame.current === null)
@@ -298,18 +277,21 @@ function App() {
         guideFrame.current = null;
       });
   }, []);
+
   const clearGuides = useCallback(() => {
     pendingGuides.current = [];
     if (guideFrame.current !== null) cancelAnimationFrame(guideFrame.current);
     guideFrame.current = null;
     setAlignmentGuides([]);
   }, []);
+
   useEffect(
     () => () => {
       if (guideFrame.current !== null) cancelAnimationFrame(guideFrame.current);
     },
     []
   );
+
   const widgetDragModifier = useMemo<Modifier>(
     () =>
       ({ active, activeNodeRect, transform }) => {
@@ -345,20 +327,24 @@ function App() {
       },
     [publishGuides]
   );
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
   const current = collections.find((c) => c.id === active) ?? null;
   const collectionPageCount = Math.max(1, Math.ceil((collections.length + 1) / 6));
   const collectionPage = Math.min(collectionPageIndex, collectionPageCount - 1);
   const visibleCollections = collections.slice(collectionPage * 6, collectionPage * 6 + 6);
   const showAddCollection = collectionPage === Math.floor(collections.length / 6);
+
   useLayoutEffect(() => {
     setCollectionPageIndex((index) => Math.min(index, collectionPageCount - 1));
   }, [collectionPageCount]);
+
   const allSites = useMemo(
     () => collections.flatMap((c) => c.sites.map((site) => ({ ...site, collection: c.name }))),
     [collections]
@@ -371,6 +357,7 @@ function App() {
       /* Keep edits in memory if storage is full. */
     }
   }, [collections]);
+
   useEffect(() => {
     try {
       localStorage.setItem('keeper-profile', JSON.stringify(profile));
@@ -378,6 +365,7 @@ function App() {
       /* Keep profile changes in memory if storage is unavailable. */
     }
   }, [profile]);
+
   useEffect(() => {
     checkpointSnapshot.current = checkpoints;
     try {
@@ -386,6 +374,7 @@ function App() {
       /* Keep checkpoints in memory if storage is unavailable. */
     }
   }, [checkpoints]);
+
   useEffect(() => {
     try {
       localStorage.setItem('keeper-widgets', JSON.stringify(widgets));
@@ -393,6 +382,7 @@ function App() {
       /* Keep widgets in memory if storage is unavailable. */
     }
   }, [widgets]);
+
   const documentSnapshot = useCallback(
     () => ({
       collections,
@@ -405,6 +395,7 @@ function App() {
     }),
     [collections, preferences, profile, widgets, checkpoints, searchPosition]
   );
+
   useEffect(() => {
     let active = true;
     const path = displayedPreferences.imagePath;
@@ -434,6 +425,7 @@ function App() {
       window.clearInterval(timer);
     };
   }, [session?.user.id, displayedPreferences.imagePath]);
+
   useEffect(() => {
     if (!session?.user.id) {
       setSyncState('local');
@@ -465,6 +457,7 @@ function App() {
       unsubscribe();
     };
   }, [session, documentSnapshot]);
+
   useLayoutEffect(() => {
     const root = appRef.current;
     const scene = root?.querySelector<HTMLElement>('.dashboard-home, .collection-page');
@@ -511,6 +504,7 @@ function App() {
     }, scene);
     return () => context.revert();
   }, [current?.id, current?.sites.length, widgets.length]);
+
   useLayoutEffect(() => {
     if (
       (!modal && !confirmDelete && !helpOpen) ||
@@ -539,6 +533,7 @@ function App() {
     }, overlay);
     return () => context.revert();
   }, [modal, confirmDelete, helpOpen]);
+
   useLayoutEffect(() => {
     if (!widgetPickerOpen || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const picker = appRef.current?.querySelector<HTMLElement>('.widget-picker');
@@ -556,6 +551,7 @@ function App() {
         }
       );
   }, [widgetPickerOpen]);
+
   const latestToastId = toasts.length > 0 ? toasts[toasts.length - 1]?.id : undefined;
   useLayoutEffect(() => {
     const toast = appRef.current?.querySelector<HTMLElement>('.toast:last-child');
@@ -572,9 +568,11 @@ function App() {
       }
     );
   }, [latestToastId]);
+
   useEffect(() => {
     searchPositionRef.current = searchPosition;
   }, [searchPosition]);
+
   useLayoutEffect(() => {
     const element = menuRef.current;
     if (!menu || !element) return;
@@ -582,6 +580,7 @@ function App() {
     element.style.left = `${Math.max(8, Math.min(menu.x, window.innerWidth - bounds.width - 8))}px`;
     element.style.top = `${Math.max(8, Math.min(menu.y, window.innerHeight - bounds.height - 8))}px`;
   }, [menu]);
+
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty('--accent', displayedPreferences.accent);
@@ -620,6 +619,7 @@ function App() {
       /* Keep the current appearance for this session if storage is full. */
     }
   }, [preferences, displayedPreferences, backgroundImageUrl]);
+
   useEffect(() => {
     const close = () => {
       setMenu(null);
@@ -628,6 +628,7 @@ function App() {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, []);
+
   useEffect(() => {
     const timer = window.setInterval(
       () => setToasts((items) => items.filter((toast) => toast.id > Date.now() - 4000)),
@@ -635,6 +636,7 @@ function App() {
     );
     return () => window.clearInterval(timer);
   }, []);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -671,7 +673,7 @@ function App() {
       }
     },
     []
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   useKeyboardShortcuts({
     hasActiveCollection: !!current,
@@ -685,6 +687,7 @@ function App() {
     setModal('collection');
     setMenu(null);
   };
+
   const startSearchDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || (event.target as HTMLElement).closest('input,button,kbd')) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -701,6 +704,7 @@ function App() {
     event.currentTarget.setPointerCapture(event.pointerId);
     setSearchDragging(true);
   };
+
   const moveSearch = (event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = searchDrag.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
@@ -733,6 +737,7 @@ function App() {
     searchPositionRef.current = { x: snappedX, y: snappedY };
     setSearchPosition(searchPositionRef.current);
   };
+
   const endSearchDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (searchDrag.current?.pointerId !== event.pointerId) return;
     searchDrag.current = null;
@@ -751,6 +756,7 @@ function App() {
       searchPositionRef.current
     );
   };
+
   const saveCollection = () => {
     const name = newCollection.trim();
     if (!name) return;
@@ -781,6 +787,7 @@ function App() {
     setNewCollection('');
     setModal(null);
   };
+
   const dismissOnboarding = () => {
     setOnboardingOpen(false);
     try {
@@ -790,8 +797,10 @@ function App() {
     }
     persistUserSettings({ onboardingDismissed: true });
   };
+
   const notify = (message: string, tone: Toast['tone'] = 'success') =>
     setToasts((items) => [...items, { id: Date.now(), message, tone }]);
+
   const importBackup = (backup: DataBackup) => {
     const document = normalizeDocument({
       collections: backup.collections,
@@ -813,6 +822,7 @@ function App() {
     searchPositionRef.current = document.searchPosition;
     notify('Backup imported successfully', 'success');
   };
+
   const wipeAllKeeperData = async () => {
     try {
       let preservedCheckpoints = checkpoints;
@@ -853,6 +863,7 @@ function App() {
       );
     }
   };
+
   const addWidget = (type: DashboardWidget['type']) => {
     const width = type === 'calendar' ? 228 : 180;
     const height = type === 'calendar' ? 230 : 130;
@@ -873,6 +884,7 @@ function App() {
     setWidgetPickerOpen(false);
     notify(`${type === 'clock' ? 'Clock' : 'Calendar'} widget added`, 'success');
   };
+
   const deleteCollection = (collection: Collection) => {
     setCollections((items) => items.filter((c) => c.id !== collection.id));
     if (active === collection.id) setActive(null);
@@ -881,6 +893,7 @@ function App() {
     setConfirmDelete(null);
     notify(`Deleted ${collection.name}`, 'success');
   };
+
   const saveSite = () => {
     const url = domainOf(newUrl.trim());
     if (!current || !newName.trim() || !url) {
@@ -923,6 +936,7 @@ function App() {
     setModal(null);
     notify(editing ? 'Website updated' : 'Website saved', 'success');
   };
+
   const openSiteModal = (site?: Site) => {
     setEditing(site ?? null);
     setNewName(site?.name ?? '');
@@ -930,12 +944,14 @@ function App() {
     setModal('site');
     setMenu(null);
   };
+
   const removeSite = (site: Site) => {
     setCollections((v) => v.map((c) => ({ ...c, sites: c.sites.filter((s) => s.id !== site.id) })));
     void syncEngine.queueMutation('site', site.id, 'delete', null);
     setMenu(null);
     notify('Website removed', 'success');
   };
+
   const moveSite = (siteId: string, targetId: string) => {
     let moved: Site | undefined;
     const stripped = collections.map((c) => ({
@@ -955,6 +971,7 @@ function App() {
       collectionId: targetId,
     });
   };
+
   const handleDragEnd = ({ active: dragged, over, delta }: DragEndEvent) => {
     if (dragged.data.current?.type === 'widget') {
       const area = document.querySelector('.dashboard-widgets');
@@ -1082,87 +1099,32 @@ function App() {
           setMenu({ x: e.clientX, y: e.clientY });
         }}
       >
-        <header className="topbar dashboard-topbar relative z-[3] flex h-[76px] items-center border-b border-[var(--line)] bg-[rgba(12,13,16,0.62)] px-[5.1%] backdrop-blur-[22px] backdrop-saturate-[130%] max-[760px]:h-[65px] max-[760px]:px-[18px]">
-          <div className="collections-strip">
-            <button
-              className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`}
-              aria-label="Previous 6 collections"
-              title="Previous 6 collections"
-              disabled={collectionPage === 0}
-              onClick={() => setCollectionPageIndex((page) => Math.max(0, page - 1))}
-            >
-              <ChevronLeft size={17} />
-            </button>
-            <div className="collection-box">
-              <nav className="collections-nav" aria-label="Collections">
-                <SortableContext
-                  items={visibleCollections.map((c) => `collection-tab:${c.id}`)}
-                  strategy={horizontalListSortingStrategy}
-                >
-                  {visibleCollections.map((c) => (
-                    <CollectionTab
-                      key={c.id}
-                      collection={c}
-                      active={active === c.id}
-                      accent={preferences.accent}
-                      onSelect={() => setActive(active === c.id ? null : c.id)}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setMenu({ x: e.clientX, y: e.clientY, collection: c });
-                      }}
-                    />
-                  ))}
-                </SortableContext>
-                {showAddCollection && (
-                  <button
-                    className="add-collection"
-                    style={{ gridColumn: (collections.length % 6) + 1 }}
-                    aria-label="New collection"
-                    title="New collection"
-                    onClick={() => openCollectionModal()}
-                  >
-                    <Plus size={15} />
-                  </button>
-                )}
-              </nav>
-            </div>
-            <button
-              className={`collection-scroll-button ${collectionPageCount > 1 ? 'shown' : ''}`}
-              aria-label="Next 6 collections"
-              title="Next 6 collections"
-              disabled={collectionPage >= collectionPageCount - 1}
-              onClick={() =>
-                setCollectionPageIndex((page) => Math.min(collectionPageCount - 1, page + 1))
-              }
-            >
-              <ChevronRight size={17} />
-            </button>
-          </div>
-          <div className="topbar-sync-action">
-            {session?.user.id ? (
-              <SyncStatusBadge
-                onOpenSettings={() => {
-                  setSettingsSection('data');
-                  setModal('settings');
-                }}
-              />
-            ) : (
-              <button
-                type="button"
-                className="sync-status-badge sync-nav-trigger paused"
-                aria-label="Sign in to use cloud backup and sync"
-                title="Sign in to use cloud backup and sync"
-                onClick={() => {
-                  notify('Please sign in first to use cloud backup and sync.', 'warning');
-                  setAuthModalOpen(true);
-                }}
-              >
-                <LockKeyhole size={15} />
-              </button>
-            )}
-          </div>
-        </header>
+        <Topbar
+          collections={collections}
+          visibleCollections={visibleCollections}
+          collectionPage={collectionPage}
+          collectionPageCount={collectionPageCount}
+          showAddCollection={showAddCollection}
+          activeCollectionId={active}
+          accentColor={preferences.accent}
+          isAuthenticated={!!session?.user.id}
+          onPageChange={setCollectionPageIndex}
+          onSelectCollection={setActive}
+          onCollectionContextMenu={(e, c) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setMenu({ x: e.clientX, y: e.clientY, collection: c });
+          }}
+          onAddCollection={() => openCollectionModal()}
+          onOpenDataSettings={() => {
+            setSettingsSection('data');
+            setModal('settings');
+          }}
+          onRequireAuth={() => {
+            notify('Please sign in first to use cloud backup and sync.', 'warning');
+            setAuthModalOpen(true);
+          }}
+        />
 
         <GlobalSearch
           variant="palette"
@@ -1326,89 +1288,31 @@ function App() {
                 <X size={17} />
               </button>
               {modal === 'collection' && (
-                <>
-                  <span className="modal-icon">
-                    <FolderPlus size={20} />
-                  </span>
-                  <div className="modal-eyebrow">
-                    {editingCollection ? 'UPDATE COLLECTION' : 'A NEW LITTLE CORNER'}
-                  </div>
-                  <h2>{editingCollection ? 'Rename collection' : 'Create a collection'}</h2>
-                  <p>
-                    {editingCollection
-                      ? 'Choose a name that feels right.'
-                      : 'Give your favorite places a place of their own.'}
-                  </p>
-                  <label className="field-label">COLLECTION NAME</label>
-                  <input
-                    className="field"
-                    autoFocus
-                    placeholder="e.g. Weekend reading"
-                    value={newCollection}
-                    onChange={(e) => setNewCollection(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && saveCollection()}
-                  />
-                  <label className="field-label">COLLECTION COLOR</label>
-                  <ColorPicker
-                    label="Collection color"
-                    value={newCollectionColor}
-                    fallbackColor={preferences.accent}
-                    allowNone
-                    onChange={setNewCollectionColor}
-                  />
-                  <div className="modal-actions">
-                    <button
-                      className="cancel-button"
-                      onClick={() => {
-                        setEditingCollection(null);
-                        setModal(null);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                    <button className="primary-button" onClick={saveCollection}>
-                      {editingCollection ? 'Save changes' : 'Create collection'}{' '}
-                      <ArrowUpRight size={15} />
-                    </button>
-                  </div>
-                </>
+                <CollectionModal
+                  isEditing={!!editingCollection}
+                  collectionName={newCollection}
+                  collectionColor={newCollectionColor}
+                  defaultAccent={preferences.accent}
+                  onNameChange={setNewCollection}
+                  onColorChange={setNewCollectionColor}
+                  onSave={saveCollection}
+                  onCancel={() => {
+                    setEditingCollection(null);
+                    setModal(null);
+                  }}
+                />
               )}
               {modal === 'site' && (
-                <>
-                  <span className="modal-icon">
-                    <Link2 size={20} />
-                  </span>
-                  <div className="modal-eyebrow">
-                    {editing ? 'TIDY UP YOUR COLLECTION' : `ADD TO ${current?.name.toUpperCase()}`}
-                  </div>
-                  <h2>{editing ? 'Edit website' : 'Save a website'}</h2>
-                  <p>A shortcut to somewhere you love.</p>
-                  <label className="field-label">DISPLAY NAME</label>
-                  <input
-                    className="field"
-                    autoFocus
-                    placeholder="e.g. Are.na"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && saveSite()}
-                  />
-                  <label className="field-label">WEBSITE ADDRESS</label>
-                  <input
-                    className="field"
-                    placeholder="e.g. are.na"
-                    value={newUrl}
-                    onChange={(e) => setNewUrl(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && saveSite()}
-                  />
-                  <div className="modal-actions">
-                    <button className="cancel-button" onClick={() => setModal(null)}>
-                      Cancel
-                    </button>
-                    <button className="primary-button" onClick={saveSite}>
-                      {editing ? 'Save changes' : 'Save website'} <ArrowUpRight size={15} />
-                    </button>
-                  </div>
-                </>
+                <SiteModal
+                  isEditing={!!editing}
+                  collectionName={current?.name}
+                  siteName={newName}
+                  siteUrl={newUrl}
+                  onNameChange={setNewName}
+                  onUrlChange={setNewUrl}
+                  onSave={saveSite}
+                  onCancel={() => setModal(null)}
+                />
               )}
               {modal === 'settings' && (
                 <SettingsPanel
@@ -1494,61 +1398,7 @@ function App() {
             </div>
           </div>
         )}
-        {onboardingOpen && (
-          <div
-            className="overlay"
-            onMouseDown={(e) => e.target === e.currentTarget && dismissOnboarding()}
-          >
-            <section
-              className="modal onboarding-modal"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="onboarding-title"
-            >
-              <button className="modal-close" onClick={dismissOnboarding} aria-label="Close">
-                <X size={17} />
-              </button>
-              <div className="modal-eyebrow">WELCOME TO KEEPER</div>
-              <h2 id="onboarding-title">Your favorite places, all in one spot.</h2>
-              <p>Make a personal dashboard for the websites you visit most.</p>
-              <ul className="onboarding-features">
-                <li>
-                  <FolderPlus size={17} />
-                  <span>
-                    <strong>Collections</strong>Group websites by work, interests, or anything you
-                    like.
-                  </span>
-                </li>
-                <li>
-                  <Link2 size={17} />
-                  <span>
-                    <strong>Website shortcuts</strong>Save a name and address, then open it from
-                    your collection.
-                  </span>
-                </li>
-                <li>
-                  <Search size={17} />
-                  <span>
-                    <strong>Quick search</strong>Find saved websites or search the web from the home
-                    screen.
-                  </span>
-                </li>
-                <li>
-                  <Settings size={17} />
-                  <span>
-                    <strong>Make it yours</strong>Adjust the look, add clock or calendar widgets,
-                    and back up your data in settings.
-                  </span>
-                </li>
-              </ul>
-              <div className="modal-actions">
-                <button className="primary-button" onClick={dismissOnboarding}>
-                  Get started <ArrowUpRight size={15} />
-                </button>
-              </div>
-            </section>
-          </div>
-        )}
+        {onboardingOpen && <OnboardingModal onDismiss={dismissOnboarding} />}
         {authModalOpen && (
           <div
             className="overlay"
@@ -1573,168 +1423,52 @@ function App() {
           </div>
         )}
         {confirmDelete && (
-          <div
-            className="overlay confirm-overlay"
-            onMouseDown={(e) => e.target === e.currentTarget && setConfirmDelete(null)}
-          >
-            <section
-              className="confirm-dialog"
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="confirm-title"
-              aria-describedby="confirm-description"
-            >
-              <span className="confirm-icon">
-                <TriangleAlert size={19} />
-              </span>
-              <div className="modal-eyebrow">DELETE COLLECTION</div>
-              <h2 id="confirm-title">Are you sure?</h2>
-              <p id="confirm-description">
-                Delete “{confirmDelete.name}” and its saved websites? This can’t be undone.
-              </p>
-              <div className="modal-actions">
-                <button className="cancel-button" onClick={() => setConfirmDelete(null)}>
-                  Cancel
-                </button>
-                <button
-                  className="confirm-delete-button"
-                  onClick={() => deleteCollection(confirmDelete)}
-                >
-                  <X size={15} /> Delete collection
-                </button>
-              </div>
-            </section>
-          </div>
+          <ConfirmDeleteModal
+            collection={confirmDelete}
+            onConfirm={() => deleteCollection(confirmDelete)}
+            onCancel={() => setConfirmDelete(null)}
+          />
         )}
-        <div className="toast-stack" aria-live="polite" aria-atomic="false">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`toast toast-${toast.tone}`}
-              role={toast.tone === 'error' ? 'alert' : 'status'}
-            >
-              {toast.tone === 'success' ? <Check size={16} /> : <TriangleAlert size={16} />}
-              <span>{toast.message}</span>
-              <button
-                aria-label="Dismiss notification"
-                onClick={() => setToasts((items) => items.filter((item) => item.id !== toast.id))}
-              >
-                <X size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
+        <ToastStack
+          toasts={toasts}
+          onDismiss={(id) => setToasts((items) => items.filter((item) => item.id !== id))}
+        />
         {menu && (
-          <div
+          <AppContextMenu
             ref={menuRef}
-            className="context-menu"
-            style={
-              {
-                left: Math.min(menu.x, window.innerWidth - 220),
-                top: menu.y,
-                '--menu-font':
-                  menu.collection?.nameFont ??
-                  menu.collection?.font ??
-                  (menu.site
-                    ? collections.find((collection) =>
-                        collection.sites.some((site) => site.id === menu.site!.id)
-                      )?.cardFont
-                    : null) ??
-                  'var(--ui-font)',
-              } as CSSProperties
-            }
-            role="menu"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {menu.collection ? (
-              <>
-                <button role="menuitem" onClick={() => openCollectionModal(menu.collection!)}>
-                  <FolderPlus size={15} /> Rename collection
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setSettingsCollectionId(menu.collection!.id);
-                    setSettingsSection('collections');
-                    setModal('settings');
-                    setMenu(null);
-                  }}
-                >
-                  <Settings size={15} /> Collection settings
-                </button>
-                <button
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => {
-                    setConfirmDelete(menu.collection!);
-                    setMenu(null);
-                  }}
-                >
-                  <X size={15} /> Delete collection
-                </button>
-              </>
-            ) : menu.site ? (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    window.open(`https://${menu.site!.url}`, '_blank');
-                    setMenu(null);
-                  }}
-                >
-                  <ExternalLink size={15} /> Open website
-                </button>
-                <button role="menuitem" onClick={() => openSiteModal(menu.site)}>
-                  <Link2 size={15} /> Edit shortcut
-                </button>
-                <div className="context-divider" />
-                <div className="context-label">MOVE TO COLLECTION</div>
-                {collections
-                  .filter((c) => !c.sites.some((s) => s.id === menu.site!.id))
-                  .map((c) => (
-                    <button
-                      role="menuitem"
-                      key={c.id}
-                      onClick={() => {
-                        moveSite(menu.site!.id, c.id);
-                        setMenu(null);
-                      }}
-                    >
-                      <span className="tab-dot" style={{ background: c.color }} />
-                      {c.name}
-                    </button>
-                  ))}
-                <div className="context-divider" />
-                <button role="menuitem" className="danger" onClick={() => removeSite(menu.site!)}>
-                  <X size={15} /> Remove shortcut
-                </button>
-              </>
-            ) : (
-              <>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setActive(null);
-                    setMenu(null);
-                  }}
-                >
-                  <Compass size={15} /> Go to dashboard
-                </button>
-                <button role="menuitem" onClick={() => openCollectionModal()}>
-                  <FolderPlus size={15} /> New collection
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    setModal('settings');
-                    setMenu(null);
-                  }}
-                >
-                  <Settings size={15} /> Settings
-                </button>
-              </>
-            )}
-          </div>
+            menu={menu}
+            collections={collections}
+            onRenameCollection={(c) => openCollectionModal(c)}
+            onOpenCollectionSettings={(colId) => {
+              setSettingsCollectionId(colId);
+              setSettingsSection('collections');
+              setModal('settings');
+              setMenu(null);
+            }}
+            onDeleteCollection={(c) => {
+              setConfirmDelete(c);
+              setMenu(null);
+            }}
+            onOpenSite={(s) => {
+              window.open(`https://${s.url}`, '_blank');
+              setMenu(null);
+            }}
+            onEditSite={(s) => openSiteModal(s)}
+            onMoveSite={(siteId, targetColId) => {
+              moveSite(siteId, targetColId);
+              setMenu(null);
+            }}
+            onRemoveSite={(s) => removeSite(s)}
+            onGoToDashboard={() => {
+              setActive(null);
+              setMenu(null);
+            }}
+            onNewCollection={() => openCollectionModal()}
+            onOpenSettings={() => {
+              setModal('settings');
+              setMenu(null);
+            }}
+          />
         )}
         <DragOverlay
           dropAnimation={{
