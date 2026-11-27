@@ -48,7 +48,3 @@ Thumbs.db
 *.njsproj
 *.sln
 *.sw?
-.prettierignore
-.prettierrc
-.vercel
-.env*

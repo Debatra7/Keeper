@@ -151,13 +151,11 @@ Deno.serve(async (req: Request) => {
 
   const bytes = await file.arrayBuffer();
 
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(storagePath, bytes, {
-      contentType: file.type,
-      upsert: true,
-      cacheControl: '3600',
-    });
+  const { error: uploadError } = await supabase.storage.from(BUCKET).upload(storagePath, bytes, {
+    contentType: file.type,
+    upsert: true,
+    cacheControl: '3600',
+  });
 
   if (uploadError) {
     console.error('Failed to upload favicon:', uploadError);

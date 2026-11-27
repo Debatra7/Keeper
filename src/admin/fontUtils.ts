@@ -105,9 +105,7 @@ export function syncGoogleFontsToDocument(fonts: readonly string[]): void {
   if (typeof document === 'undefined') return;
 
   const desired = new Set(
-    fonts
-      .map((f) => f.trim())
-      .filter((f) => f.length > 0 && !STATIC_INDEX_FONTS.has(f))
+    fonts.map((f) => f.trim()).filter((f) => f.length > 0 && !STATIC_INDEX_FONTS.has(f))
   );
 
   const existingLinks = document.head.querySelectorAll<HTMLLinkElement>('link[data-keeper-font]');

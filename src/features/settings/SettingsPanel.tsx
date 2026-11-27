@@ -530,7 +530,8 @@ export function SettingsPanel({
                     let changed = false;
                     const nextStyles: typeof styles = { ...styles };
                     for (const [id, style] of Object.entries(styles)) {
-                      const clearFont = style.font === prevGlobalFont || style.font === preferences.font;
+                      const clearFont =
+                        style.font === prevGlobalFont || style.font === preferences.font;
                       const clearName =
                         style.nameFont === prevGlobalFont || style.nameFont === preferences.font;
                       const clearCard =

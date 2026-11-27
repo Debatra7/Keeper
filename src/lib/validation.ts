@@ -21,9 +21,7 @@ const color = (value: unknown) => typeof value === 'string' && /^#[\da-f]{6}$/i.
 const validFont = (value: unknown) =>
   value === undefined ||
   value === null ||
-  (typeof value === 'string' &&
-    value.length <= 100 &&
-    !/[\u0000-\u001f\u007f]/.test(value));
+  (typeof value === 'string' && value.length <= 100 && !/[\u0000-\u001f\u007f]/.test(value));
 const normalizeFontSize = (value: unknown): FontSize => {
   // Accept numeric strings returned by the database (SQL ->> returns text).
   const coerced = typeof value === 'string' ? Number(value) : value;

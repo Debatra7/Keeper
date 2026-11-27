@@ -96,7 +96,11 @@ export function GlobalSearch({
       <kbd>
         <Command size={11} /> K
       </kbd>
-      <button className="search-go" aria-label="Search saved sites or the web" onClick={handleSearch}>
+      <button
+        className="search-go"
+        aria-label="Search saved sites or the web"
+        onClick={handleSearch}
+      >
         <ArrowUpRight size={17} />
       </button>
       {open && value.trim() && (

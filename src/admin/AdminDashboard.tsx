@@ -500,9 +500,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-neutral-300">
-                      Favicon Icon
-                    </label>
+                    <label className="text-xs font-semibold text-neutral-300">Favicon Icon</label>
                     <div className="flex gap-2 items-center">
                       <Input
                         value={config.faviconUrl}
@@ -542,9 +540,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                             </span>
                             <span className="text-[10px] text-neutral-600">×</span>
                           </div>
-                          <p className="text-[10px] text-neutral-500 mb-2">
-                            Browser tab preview
-                          </p>
+                          <p className="text-[10px] text-neutral-500 mb-2">Browser tab preview</p>
                           <button
                             type="button"
                             onClick={() => setConfig({ ...config, faviconUrl: '' })}

@@ -31,10 +31,7 @@ export async function verifyAdminKey(key: string): Promise<AdminAuthResult> {
 
     // Store the server-issued token (not the raw key) and a 60-minute client expiry
     sessionStorage.setItem(SESSION_KEY, data.token);
-    sessionStorage.setItem(
-      SESSION_EXPIRES_AT_KEY,
-      String(Date.now() + ADMIN_SESSION_DURATION_MS)
-    );
+    sessionStorage.setItem(SESSION_EXPIRES_AT_KEY, String(Date.now() + ADMIN_SESSION_DURATION_MS));
     return { ok: true };
   } catch {
     return { ok: false, error: 'Could not reach authentication service. Check your connection.' };
