@@ -31,6 +31,7 @@ import {
   saveLocalSiteConfig,
   fetchRemoteSiteConfig,
   applySiteConfigToDocument,
+  hasPendingRemoteSiteConfigSync,
 } from '../admin/siteConfig';
 import {
   readShortcutBindings,
@@ -204,12 +205,14 @@ function App() {
   useEffect(() => {
     const local = readLocalSiteConfig();
     applySiteConfigToDocument(local);
-    void fetchRemoteSiteConfig().then((remote) => {
-      if (remote) {
-        saveLocalSiteConfig(remote);
-        applySiteConfigToDocument(remote);
-      }
-    });
+    if (!hasPendingRemoteSiteConfigSync()) {
+      void fetchRemoteSiteConfig().then((remote) => {
+        if (remote && !hasPendingRemoteSiteConfigSync()) {
+          saveLocalSiteConfig(remote);
+          applySiteConfigToDocument(remote);
+        }
+      });
+    }
 
     const onConfigUpdate = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -218,7 +221,14 @@ function App() {
       }
       setSiteConfigVersion((v) => v + 1);
     };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'keeper_developer_site_config') {
+        applySiteConfigToDocument(readLocalSiteConfig());
+        setSiteConfigVersion((v) => v + 1);
+      }
+    };
     window.addEventListener('keeper:site-config-updated', onConfigUpdate);
+    window.addEventListener('storage', onStorage);
 
     const onPopState = () => {
       setAdminRouteOpen(
@@ -231,6 +241,7 @@ function App() {
 
     return () => {
       window.removeEventListener('keeper:site-config-updated', onConfigUpdate);
+      window.removeEventListener('storage', onStorage);
       window.removeEventListener('popstate', onPopState);
     };
   }, []);

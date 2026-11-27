@@ -41,6 +41,7 @@ import {
   saveRemoteSiteConfig,
   fetchRemoteSiteConfig,
   applySiteConfigToDocument,
+  hasPendingRemoteSiteConfigSync,
 } from './siteConfig';
 import { parseGoogleFontLink, syncGoogleFontsToDocument } from './fontUtils';
 import { type DeveloperSiteConfig } from './types';
@@ -101,6 +102,56 @@ function SortableFontCard({ font, onRemove }: SortableFontCardProps) {
   );
 }
 
+interface SortableColorChipProps {
+  color: string;
+  onRemove: (color: string) => void;
+}
+
+function SortableColorChip({ color, onRemove }: SortableColorChipProps) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: color,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-neutral-950/80 transition-colors ${
+        isDragging
+          ? 'border-indigo-500/80 ring-1 ring-indigo-500/50 opacity-75 z-10'
+          : 'border-neutral-800 hover:border-neutral-700'
+      }`}
+    >
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-3.5 h-3.5 text-neutral-600 shrink-0" />
+        <span
+          className="w-4 h-4 rounded-full border border-white/20 shrink-0"
+          style={{ background: color }}
+        />
+        <span className="text-xs font-mono text-neutral-300 uppercase">{color}</span>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(color)}
+        title={`Remove ${color}`}
+        className="text-neutral-500 hover:text-red-400 ml-1 bg-transparent border-0 p-0 shadow-none transition-colors"
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
+
 interface AdminDashboardProps {
   onExit: () => void;
 }
@@ -117,6 +168,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   const [newFontInput, setNewFontInput] = useState('');
   const [fontInputError, setFontInputError] = useState<string | null>(null);
   const [newColorInput, setNewColorInput] = useState('#6366f1');
+  const [colorInputError, setColorInputError] = useState<string | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -129,8 +181,9 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
 
   useEffect(() => {
     let active = true;
+    if (hasPendingRemoteSiteConfigSync()) return;
     void fetchRemoteSiteConfig().then((remote) => {
-      if (active && remote) {
+      if (active && remote && !hasPendingRemoteSiteConfigSync()) {
         setConfig(remote);
         setSavedConfig(remote);
       }
@@ -222,16 +275,35 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   };
 
   const addColor = () => {
-    const val = newColorInput.trim();
+    const val = newColorInput.trim().toLowerCase();
     if (!/^#[\da-f]{6}$/i.test(val)) {
-      alert('Please enter a valid 6-character hex color (e.g. #6366f1)');
+      setColorInputError('Please enter a valid 6-character hex color (e.g. #6366f1).');
       return;
     }
-    if (config.accentPalette.includes(val)) return;
+    if (config.accentPalette.some((c) => c.toLowerCase() === val)) {
+      setColorInputError(`"${val.toUpperCase()}" is already in the color palette.`);
+      return;
+    }
+    setColorInputError(null);
     setConfig((prev) => ({
       ...prev,
       accentPalette: [...prev.accentPalette, val],
     }));
+  };
+
+  const handleColorDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setConfig((prev) => {
+      const oldIndex = prev.accentPalette.indexOf(String(active.id));
+      const newIndex = prev.accentPalette.indexOf(String(over.id));
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return {
+        ...prev,
+        accentPalette: arrayMove(prev.accentPalette, oldIndex, newIndex),
+      };
+    });
   };
 
   const removeColor = (colorToRemove: string) => {
@@ -569,49 +641,51 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                   Settings
                 </CardTitle>
                 <CardDescription>
-                  Configure the curated accent color swatches offered in the Appearance Settings
-                  panel.
+                  Drag swatches to reorder how they appear in user settings, or add a new accent
+                  color.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  {config.accentPalette.map((color) => (
-                    <div
-                      key={color}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-neutral-800 bg-neutral-950/80 group"
-                    >
-                      <span
-                        className="w-4 h-4 rounded-full border border-white/20"
-                        style={{ background: color }}
-                      />
-                      <span className="text-xs font-mono text-neutral-300 uppercase">{color}</span>
-                      <button
-                        onClick={() => removeColor(color)}
-                        title={`Remove ${color}`}
-                        className="text-neutral-500 hover:text-red-400 ml-1 bg-transparent border-0 p-0 shadow-none transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleColorDragEnd}
+                >
+                  <SortableContext items={config.accentPalette} strategy={rectSortingStrategy}>
+                    <div className="flex flex-wrap items-center gap-3">
+                      {config.accentPalette.map((color) => (
+                        <SortableColorChip key={color} color={color} onRemove={removeColor} />
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </SortableContext>
+                </DndContext>
 
-                <div className="flex items-center gap-2 pt-2 max-w-sm">
-                  <input
-                    type="color"
-                    value={newColorInput}
-                    onChange={(e) => setNewColorInput(e.target.value)}
-                    className="w-9 h-9 rounded border border-neutral-700 bg-transparent cursor-pointer shrink-0"
-                  />
-                  <Input
-                    value={newColorInput}
-                    onChange={(e) => setNewColorInput(e.target.value)}
-                    placeholder="#6366f1"
-                    className="bg-neutral-950 border-neutral-800 uppercase"
-                  />
-                  <Button size="sm" onClick={addColor} variant="secondary">
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Swatch
-                  </Button>
+                <div className="pt-2 space-y-1.5 max-w-sm">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={/^#[\da-f]{6}$/i.test(newColorInput) ? newColorInput : '#6366f1'}
+                      onChange={(e) => {
+                        setNewColorInput(e.target.value);
+                        if (colorInputError) setColorInputError(null);
+                      }}
+                      className="w-9 h-9 rounded border border-neutral-700 bg-transparent cursor-pointer shrink-0"
+                    />
+                    <Input
+                      value={newColorInput}
+                      onChange={(e) => {
+                        setNewColorInput(e.target.value);
+                        if (colorInputError) setColorInputError(null);
+                      }}
+                      onKeyDown={(e) => e.key === 'Enter' && addColor()}
+                      placeholder="#6366f1"
+                      className="bg-neutral-950 border-neutral-800 uppercase"
+                    />
+                    <Button size="sm" onClick={addColor} variant="secondary" className="shrink-0">
+                      <Plus className="w-3.5 h-3.5 mr-1" /> Add Swatch
+                    </Button>
+                  </div>
+                  {colorInputError && <p className="text-[11px] text-red-400">{colorInputError}</p>}
                 </div>
               </CardContent>
             </Card>

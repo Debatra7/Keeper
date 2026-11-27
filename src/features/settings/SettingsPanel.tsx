@@ -23,7 +23,8 @@ import { FontSizeSelector, type FontSize } from '../../components/FontSelector';
 import { WallpaperPicker } from '../../components/WallpaperPicker';
 import type { Preferences } from './preferences';
 import type { DashboardWidget } from '../dashboard/DashboardWidgets';
-import { defaultPreferences, getAllowedFonts } from './preferences';
+import { defaultPreferences } from './preferences';
+import { useSiteConfig } from '../../admin/siteConfig';
 import { isBackup } from '../../lib/validation';
 import { syncEngine, type SyncEngineState } from '../../lib/sync';
 import { supabase } from '../../lib/supabase';
@@ -111,6 +112,7 @@ export function SettingsPanel({
   const [confirmDeleteCheckpoint, setConfirmDeleteCheckpoint] = useState<DataBackup | null>(null);
   const [engineState, setEngineState] = useState<SyncEngineState>(() => syncEngine.getState());
   useEffect(() => syncEngine.subscribe(setEngineState), []);
+  const siteConfig = useSiteConfig();
   const [wallpaperToDelete, setWallpaperToDelete] = useState<string | null>(null);
   const [importPreview, setImportPreview] = useState<DataBackup | null>(null);
   const [draftPreferences, setDraftPreferences] = useState(preferences);
@@ -510,7 +512,7 @@ export function SettingsPanel({
               </small>
               <FontSelector
                 value={draftPreferences.font}
-                options={getAllowedFonts()}
+                options={siteConfig.allowedFonts}
                 size={draftPreferences.size}
                 onSizeChange={(size) => {
                   const next = { ...draftPreferences, size };
@@ -583,7 +585,7 @@ export function SettingsPanel({
                           value={
                             selectedStyle!.nameFont ?? selectedStyle!.font ?? draftPreferences.font
                           }
-                          options={getAllowedFonts()}
+                          options={siteConfig.allowedFonts}
                           onChange={(font) =>
                             setDraftCollectionStyles((value) => ({
                               ...value,
@@ -638,7 +640,7 @@ export function SettingsPanel({
                           value={
                             selectedStyle!.cardFont ?? selectedStyle!.font ?? draftPreferences.font
                           }
-                          options={getAllowedFonts()}
+                          options={siteConfig.allowedFonts}
                           onChange={(font) =>
                             setDraftCollectionStyles((value) => ({
                               ...value,

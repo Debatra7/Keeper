@@ -1,5 +1,5 @@
 import { Ban, Palette } from 'lucide-react';
-import { readLocalSiteConfig } from '../admin/siteConfig';
+import { useSiteConfig } from '../admin/siteConfig';
 
 export const DEFAULT_COLOR_PRESETS = [
   '#f08f9b',
@@ -26,7 +26,8 @@ export function ColorPicker({
   allowNone?: boolean;
   presets?: string[];
 }) {
-  const activePresets = presets ?? readLocalSiteConfig().accentPalette ?? DEFAULT_COLOR_PRESETS;
+  const siteConfig = useSiteConfig();
+  const activePresets = presets ?? siteConfig.accentPalette ?? DEFAULT_COLOR_PRESETS;
 
   const customPicker = (
     <label className="color-picker-custom" title="Choose a custom color">

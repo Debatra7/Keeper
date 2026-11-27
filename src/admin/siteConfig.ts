@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { type DeveloperSiteConfig, INITIAL_SITE_CONFIG } from './types';
 import { syncGoogleFontsToDocument } from './fontUtils';
 
 const STORAGE_KEY = 'keeper_developer_site_config';
+const PENDING_SYNC_KEY = 'keeper_developer_site_config_pending_sync';
 
 export function readLocalSiteConfig(): DeveloperSiteConfig {
   try {
@@ -34,6 +36,53 @@ export function saveLocalSiteConfig(config: DeveloperSiteConfig) {
   } catch (err) {
     console.error('Failed to save local site config:', err);
   }
+}
+
+export function hasPendingRemoteSiteConfigSync(): boolean {
+  try {
+    return localStorage.getItem(PENDING_SYNC_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setPendingRemoteSiteConfigSync(pending: boolean) {
+  try {
+    if (pending) {
+      localStorage.setItem(PENDING_SYNC_KEY, '1');
+    } else {
+      localStorage.removeItem(PENDING_SYNC_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function useSiteConfig(): DeveloperSiteConfig {
+  const [siteConfig, setSiteConfig] = useState<DeveloperSiteConfig>(readLocalSiteConfig);
+
+  useEffect(() => {
+    const syncFromLocal = () => {
+      setSiteConfig(readLocalSiteConfig());
+    };
+    const onConfigUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<DeveloperSiteConfig>).detail;
+      setSiteConfig(detail ?? readLocalSiteConfig());
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY) {
+        syncFromLocal();
+      }
+    };
+    window.addEventListener('keeper:site-config-updated', onConfigUpdate);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('keeper:site-config-updated', onConfigUpdate);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  return siteConfig;
 }
 
 export async function fetchRemoteSiteConfig(): Promise<DeveloperSiteConfig | null> {
@@ -72,7 +121,10 @@ export async function fetchRemoteSiteConfig(): Promise<DeveloperSiteConfig | nul
 
 export async function saveRemoteSiteConfig(config: DeveloperSiteConfig): Promise<boolean> {
   saveLocalSiteConfig(config);
-  if (!supabase) return true;
+  if (!supabase) {
+    setPendingRemoteSiteConfigSync(false);
+    return true;
+  }
   try {
     const { error } = await supabase.from('keeper_site_config').upsert({
       id: 'global',
@@ -92,11 +144,14 @@ export async function saveRemoteSiteConfig(config: DeveloperSiteConfig): Promise
 
     if (error) {
       console.error('Failed to sync site config to Supabase:', error);
+      setPendingRemoteSiteConfigSync(true);
       return false;
     }
+    setPendingRemoteSiteConfigSync(false);
     return true;
   } catch (err) {
     console.error('Error updating remote site config:', err);
+    setPendingRemoteSiteConfigSync(true);
     return false;
   }
 }
