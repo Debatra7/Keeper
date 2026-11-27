@@ -74,6 +74,12 @@ export function isAdminAuthenticated(): boolean {
   }
 }
 
+/** Return the active admin token if authenticated, otherwise null. */
+export function getAdminToken(): string | null {
+  if (!isAdminAuthenticated()) return null;
+  return sessionStorage.getItem(SESSION_KEY);
+}
+
 /** Clear the admin session. */
 export function clearAdminSession(): void {
   sessionStorage.removeItem(SESSION_KEY);

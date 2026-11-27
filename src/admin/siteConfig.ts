@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { getAdminToken } from '../lib/adminAuth';
 import { type DeveloperSiteConfig, INITIAL_SITE_CONFIG } from './types';
 import { syncGoogleFontsToDocument } from './fontUtils';
 
@@ -121,6 +122,38 @@ export async function fetchRemoteSiteConfig(): Promise<DeveloperSiteConfig | nul
 
 export async function saveRemoteSiteConfig(config: DeveloperSiteConfig): Promise<boolean> {
   saveLocalSiteConfig(config);
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+  const adminToken = getAdminToken();
+
+  if (supabaseUrl && adminToken) {
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-admin-token': adminToken,
+      };
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+      if (anonKey) {
+        headers.apikey = anonKey;
+      }
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/admin-site-config`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(config),
+      });
+
+      if (res.ok) {
+        setPendingRemoteSiteConfigSync(false);
+        return true;
+      }
+
+      const errBody = await res.text().catch(() => '');
+      console.error('Failed to sync site config via admin-site-config:', res.status, errBody);
+    } catch (err) {
+      console.error('Error calling admin-site-config function:', err);
+    }
+  }
+
   if (!supabase) {
     setPendingRemoteSiteConfigSync(false);
     return true;
