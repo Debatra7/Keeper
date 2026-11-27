@@ -160,35 +160,8 @@ export async function saveRemoteSiteConfig(config: DeveloperSiteConfig): Promise
     setPendingRemoteSiteConfigSync(false);
     return true;
   }
-  try {
-    const { error } = await supabase.from('keeper_site_config').upsert({
-      id: 'global',
-      favicon_url: config.faviconUrl || null,
-      site_title: config.siteTitle,
-      default_accent: config.defaultAccent,
-      default_background: config.defaultBackground,
-      default_color1: config.defaultColor1,
-      default_color2: config.defaultColor2,
-      default_image: config.defaultImage || null,
-      default_font: config.defaultFont,
-      default_font_size: config.defaultFontSize,
-      allowed_fonts: config.allowedFonts,
-      accent_palette: config.accentPalette,
-      updated_at: new Date().toISOString(),
-    });
-
-    if (error) {
-      console.error('Failed to sync site config to Supabase:', error);
-      setPendingRemoteSiteConfigSync(true);
-      return false;
-    }
-    setPendingRemoteSiteConfigSync(false);
-    return true;
-  } catch (err) {
-    console.error('Error updating remote site config:', err);
-    setPendingRemoteSiteConfigSync(true);
-    return false;
-  }
+  setPendingRemoteSiteConfigSync(true);
+  return false;
 }
 
 export function applySiteConfigToDocument(config: DeveloperSiteConfig) {
