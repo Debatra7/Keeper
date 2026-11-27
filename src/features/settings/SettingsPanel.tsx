@@ -519,13 +519,35 @@ export function SettingsPanel({
                   setDraftPreferences(next);
                   onAppearancePreview(next);
                 }}
-                onChange={(font) =>
+                onChange={(font) => {
+                  const prevGlobalFont = draftPreferences.font;
                   setDraftPreferences((v) => {
                     const next = { ...v, font };
                     onAppearancePreview(next);
                     return next;
-                  })
-                }
+                  });
+                  setDraftCollectionStyles((styles) => {
+                    let changed = false;
+                    const nextStyles: typeof styles = { ...styles };
+                    for (const [id, style] of Object.entries(styles)) {
+                      const clearFont = style.font === prevGlobalFont || style.font === preferences.font;
+                      const clearName =
+                        style.nameFont === prevGlobalFont || style.nameFont === preferences.font;
+                      const clearCard =
+                        style.cardFont === prevGlobalFont || style.cardFont === preferences.font;
+                      if (clearFont || clearName || clearCard) {
+                        changed = true;
+                        nextStyles[id] = {
+                          ...style,
+                          ...(clearFont ? { font: undefined } : {}),
+                          ...(clearName ? { nameFont: null } : {}),
+                          ...(clearCard ? { cardFont: null } : {}),
+                        };
+                      }
+                    }
+                    return changed ? nextStyles : styles;
+                  });
+                }}
               />
               <button
                 type="button"
@@ -600,13 +622,18 @@ export function SettingsPanel({
                           type="button"
                           className="text-button"
                           onClick={() =>
-                            setDraftCollectionStyles((value) => ({
-                              ...value,
-                              [selectedCollection.id]: {
-                                ...value[selectedCollection.id],
-                                nameFont: null,
-                              },
-                            }))
+                            setDraftCollectionStyles((value) => {
+                              const currentStyle = value[selectedCollection.id];
+                              return {
+                                ...value,
+                                [selectedCollection.id]: {
+                                  ...currentStyle,
+                                  font: undefined,
+                                  nameFont: null,
+                                  cardFont: currentStyle?.cardFont ?? currentStyle?.font ?? null,
+                                },
+                              };
+                            })
                           }
                         >
                           Use global font
@@ -655,13 +682,18 @@ export function SettingsPanel({
                           type="button"
                           className="text-button"
                           onClick={() =>
-                            setDraftCollectionStyles((value) => ({
-                              ...value,
-                              [selectedCollection.id]: {
-                                ...value[selectedCollection.id],
-                                cardFont: null,
-                              },
-                            }))
+                            setDraftCollectionStyles((value) => {
+                              const currentStyle = value[selectedCollection.id];
+                              return {
+                                ...value,
+                                [selectedCollection.id]: {
+                                  ...currentStyle,
+                                  font: undefined,
+                                  cardFont: null,
+                                  nameFont: currentStyle?.nameFont ?? currentStyle?.font ?? null,
+                                },
+                              };
+                            })
                           }
                         >
                           Use global font
@@ -1244,10 +1276,10 @@ export function SettingsPanel({
                     [selectedCollection.id]: {
                       ...value[selectedCollection.id],
                       color: draftPreferences.accent,
-                      font: draftPreferences.font,
-                      nameFont: draftPreferences.font,
+                      font: undefined,
+                      nameFont: null,
                       titleFontSize: draftPreferences.size,
-                      cardFont: draftPreferences.font,
+                      cardFont: null,
                       cardFontSize: draftPreferences.size,
                     },
                   }));
