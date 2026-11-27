@@ -167,7 +167,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   } | null>(null);
   const [newFontInput, setNewFontInput] = useState('');
   const [fontInputError, setFontInputError] = useState<string | null>(null);
-  const [newColorInput, setNewColorInput] = useState('#6366f1');
+  const [newColorInput, setNewColorInput] = useState('');
   const [colorInputError, setColorInputError] = useState<string | null>(null);
 
   const sensors = useSensors(
@@ -289,6 +289,7 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
       ...prev,
       accentPalette: [...prev.accentPalette, val],
     }));
+    setNewColorInput('');
   };
 
   const handleColorDragEnd = (event: DragEndEvent) => {
