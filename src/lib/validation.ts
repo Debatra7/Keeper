@@ -1,5 +1,5 @@
 import type { Collection, Site } from '../components/types';
-import { FONT_OPTIONS, type Preferences } from '../features/settings/preferences';
+import type { Preferences } from '../features/settings/preferences';
 import { FONT_SIZES, type FontSize } from '../components/FontSelector';
 import type { DataBackup, UserProfile } from '../features/settings/SettingsPanel';
 import type { DashboardWidget } from '../features/dashboard/DashboardWidgets';
@@ -21,7 +21,9 @@ const color = (value: unknown) => typeof value === 'string' && /^#[\da-f]{6}$/i.
 const validFont = (value: unknown) =>
   value === undefined ||
   value === null ||
-  FONT_OPTIONS.includes(value as (typeof FONT_OPTIONS)[number]);
+  (typeof value === 'string' &&
+    value.length <= 100 &&
+    !/[\u0000-\u001f\u007f]/.test(value));
 const normalizeFontSize = (value: unknown): FontSize => {
   // Accept numeric strings returned by the database (SQL ->> returns text).
   const coerced = typeof value === 'string' ? Number(value) : value;
@@ -121,7 +123,7 @@ function validPreferences(value: unknown): value is Preferences {
     imageOk &&
     imagePathOk &&
     wallpaperUrlsOk &&
-    FONT_OPTIONS.includes(value.font as (typeof FONT_OPTIONS)[number]) &&
+    validFont(value.font) &&
     (FONT_SIZES.some((size) => size.value === sizeNum) ||
       ['small', 'medium', 'large'].includes(String(value.size)))
   );
