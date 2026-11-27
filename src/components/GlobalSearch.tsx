@@ -36,10 +36,11 @@ export function GlobalSearch({
   onPointerUp,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const matches = value.trim()
+  const query = value.trim();
+  const matches = query
     ? sites
         .filter((site) =>
-          `${site.name} ${site.url} ${site.collection}`.toLowerCase().includes(value.toLowerCase())
+          `${site.name} ${site.url} ${site.collection}`.toLowerCase().includes(query.toLowerCase())
         )
         .slice(0, 5)
     : [];
@@ -48,9 +49,25 @@ export function GlobalSearch({
     if (focusRequest > 0 || (variant === 'palette' && open)) inputRef.current?.focus();
   }, [focusRequest, open, variant]);
 
+  const siteHref = (url: string) => (url.startsWith('http') ? url : `https://${url}`);
+
   const searchWeb = () => {
-    if (value.trim())
-      window.open(`https://www.google.com/search?q=${encodeURIComponent(value)}`, '_blank');
+    if (!query) return;
+    window.open(
+      `https://www.google.com/search?q=${encodeURIComponent(query)}`,
+      '_blank',
+      'noopener,noreferrer'
+    );
+  };
+
+  const handleSearch = () => {
+    if (!query) return;
+    if (matches.length > 0) {
+      window.open(siteHref(matches[0].url), '_blank', 'noopener,noreferrer');
+      setOpen(false);
+      return;
+    }
+    searchWeb();
   };
   const searchBox = (
     <div
@@ -72,14 +89,14 @@ export function GlobalSearch({
         onChange={(event) => setValue(event.target.value)}
         onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
-          if (event.key === 'Enter') searchWeb();
+          if (event.key === 'Enter') handleSearch();
         }}
         placeholder="Search the web or your saved places..."
       />
       <kbd>
         <Command size={11} /> K
       </kbd>
-      <button className="search-go" aria-label="Search the web" onClick={searchWeb}>
+      <button className="search-go" aria-label="Search saved sites or the web" onClick={handleSearch}>
         <ArrowUpRight size={17} />
       </button>
       {open && value.trim() && (
@@ -87,7 +104,7 @@ export function GlobalSearch({
           {matches.map((site) => (
             <a
               key={site.id}
-              href={site.url.startsWith('http') ? site.url : `https://${site.url}`}
+              href={siteHref(site.url)}
               className="search-result"
               onClick={() => setOpen(false)}
             >
