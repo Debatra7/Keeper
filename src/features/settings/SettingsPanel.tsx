@@ -1231,8 +1231,12 @@ export function SettingsPanel({
               <button
                 className="confirm-delete-button"
                 onClick={() => {
-                  setDraftPreferences(defaultPreferences);
-                  onAppearancePreview(defaultPreferences);
+                  const resetPrefs = {
+                    ...defaultPreferences,
+                    wallpaperUrls: draftPreferences.wallpaperUrls,
+                  };
+                  setDraftPreferences(resetPrefs);
+                  onAppearancePreview(resetPrefs);
                   setConfirmReset(false);
                 }}
               >
