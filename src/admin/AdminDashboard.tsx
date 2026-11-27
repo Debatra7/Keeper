@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   ArrowLeft,
   Save,
@@ -13,6 +13,8 @@ import {
   Globe,
   ImageIcon,
   GripVertical,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import {
   DndContext,
@@ -44,6 +46,7 @@ import {
   hasPendingRemoteSiteConfigSync,
 } from './siteConfig';
 import { parseGoogleFontLink, syncGoogleFontsToDocument } from './fontUtils';
+import { getAdminToken } from '../lib/adminAuth';
 import { type DeveloperSiteConfig } from './types';
 import type { FontSize } from '../components/FontSelector';
 import { AnalyticsView } from './components/AnalyticsView';
@@ -169,6 +172,8 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   const [fontInputError, setFontInputError] = useState<string | null>(null);
   const [newColorInput, setNewColorInput] = useState('');
   const [colorInputError, setColorInputError] = useState<string | null>(null);
+  const [faviconUploading, setFaviconUploading] = useState(false);
+  const faviconFileRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -194,6 +199,77 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
   }, []);
 
   const hasChanges = JSON.stringify(config) !== JSON.stringify(savedConfig);
+
+  const handleFaviconUpload = async (file: File) => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+    const adminToken = getAdminToken();
+    if (!supabaseUrl || !adminToken) {
+      setStatusMessage({ type: 'error', text: 'Admin session required to upload favicon.' });
+      setTimeout(() => setStatusMessage(null), 5000);
+      return;
+    }
+
+    const maxSize = 2 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setStatusMessage({ type: 'error', text: 'Favicon file must be under 2 MB.' });
+      setTimeout(() => setStatusMessage(null), 5000);
+      return;
+    }
+
+    const allowed = [
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/svg+xml',
+      'image/x-icon',
+      'image/vnd.microsoft.icon',
+    ];
+    if (!allowed.includes(file.type)) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Unsupported file type. Please use PNG, JPEG, WebP, SVG, or ICO.',
+      });
+      setTimeout(() => setStatusMessage(null), 5000);
+      return;
+    }
+
+    setFaviconUploading(true);
+    setStatusMessage(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+
+      const headers: Record<string, string> = { 'x-admin-token': adminToken };
+      const anonKey =
+        (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
+        (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
+      if (anonKey) headers.apikey = anonKey;
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/admin-favicon-upload`, {
+        method: 'POST',
+        headers,
+        body: form,
+      });
+
+      const data = (await res.json()) as { ok?: boolean; url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        setStatusMessage({
+          type: 'error',
+          text: data.error || 'Failed to upload favicon.',
+        });
+      } else {
+        setConfig((prev) => ({ ...prev, faviconUrl: data.url! }));
+        setStatusMessage({ type: 'success', text: 'Favicon uploaded successfully!' });
+      }
+    } catch (err) {
+      console.error('Favicon upload error:', err);
+      setStatusMessage({ type: 'error', text: 'Network error uploading favicon.' });
+    } finally {
+      setFaviconUploading(false);
+      if (faviconFileRef.current) faviconFileRef.current.value = '';
+      setTimeout(() => setStatusMessage(null), 5000);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -425,13 +501,13 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-300">
-                      Favicon Icon URL
+                      Favicon Icon
                     </label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 items-center">
                       <Input
                         value={config.faviconUrl}
                         onChange={(e) => setConfig({ ...config, faviconUrl: e.target.value })}
-                        placeholder="https://example.com/favicon.png or /favicon.ico"
+                        placeholder="https://example.com/favicon.png or upload below"
                         className="bg-neutral-950 border-neutral-800"
                       />
                       {config.faviconUrl && (
@@ -447,9 +523,76 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                         </div>
                       )}
                     </div>
-                    <p className="text-[11px] text-neutral-500">
-                      Direct HTTPS link to .ico, .png, or .svg icon.
-                    </p>
+
+                    {/* Live Favicon Preview */}
+                    {config.faviconUrl && (
+                      <div className="flex items-center gap-3 p-3 rounded-lg border border-neutral-800 bg-neutral-950/60 mt-2">
+                        <div className="w-8 h-8 rounded-md border border-neutral-700 bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden">
+                          <img
+                            src={config.faviconUrl}
+                            alt="Favicon"
+                            className="w-5 h-5 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-sm border border-neutral-700 bg-neutral-900 flex items-center justify-center overflow-hidden shrink-0">
+                              <img
+                                src={config.faviconUrl}
+                                alt=""
+                                className="w-2.5 h-2.5 object-contain"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            </div>
+                            <span className="text-[11px] text-neutral-300 truncate">
+                              {config.siteTitle || 'Keeper'}
+                            </span>
+                            <span className="text-[10px] text-neutral-600">×</span>
+                          </div>
+                          <p className="text-[10px] text-neutral-500 mt-0.5">
+                            Browser tab preview
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        ref={faviconFileRef}
+                        type="file"
+                        accept=".ico,.png,.jpg,.jpeg,.webp,.svg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleFaviconUpload(file);
+                        }}
+                      />
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => faviconFileRef.current?.click()}
+                        disabled={faviconUploading}
+                        className="shrink-0"
+                      >
+                        {faviconUploading ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" /> Uploading…
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="w-3.5 h-3.5 mr-1" /> Upload Favicon
+                          </>
+                        )}
+                      </Button>
+                      <span className="text-[11px] text-neutral-500">
+                        PNG, ICO, SVG, WebP, or JPEG — max 2 MB
+                      </span>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
