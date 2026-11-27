@@ -510,36 +510,24 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                         placeholder="https://example.com/favicon.png or upload below"
                         className="bg-neutral-950 border-neutral-800"
                       />
-                      {config.faviconUrl && (
-                        <div className="w-9 h-9 rounded border border-neutral-700 bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden">
+                    </div>
+
+                    {/* Favicon Preview Box */}
+                    {config.faviconUrl ? (
+                      <div className="flex items-start gap-4 p-3.5 rounded-lg border border-neutral-800 bg-neutral-950/60 mt-2">
+                        <div className="w-16 h-16 rounded-lg border border-neutral-700 bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden">
                           <img
                             src={config.faviconUrl}
                             alt="Favicon preview"
-                            className="w-5 h-5 object-contain"
+                            className="w-10 h-10 object-contain"
                             onError={(e) => {
                               (e.target as HTMLElement).style.display = 'none';
                             }}
                           />
                         </div>
-                      )}
-                    </div>
-
-                    {/* Live Favicon Preview */}
-                    {config.faviconUrl && (
-                      <div className="flex items-center gap-3 p-3 rounded-lg border border-neutral-800 bg-neutral-950/60 mt-2">
-                        <div className="w-8 h-8 rounded-md border border-neutral-700 bg-neutral-900 flex items-center justify-center shrink-0 overflow-hidden">
-                          <img
-                            src={config.faviconUrl}
-                            alt="Favicon"
-                            className="w-5 h-5 object-contain"
-                            onError={(e) => {
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-sm border border-neutral-700 bg-neutral-900 flex items-center justify-center overflow-hidden shrink-0">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <div className="w-3.5 h-3.5 rounded-sm border border-neutral-700 bg-neutral-900 flex items-center justify-center overflow-hidden shrink-0">
                               <img
                                 src={config.faviconUrl}
                                 alt=""
@@ -554,10 +542,23 @@ export function AdminDashboard({ onExit }: AdminDashboardProps) {
                             </span>
                             <span className="text-[10px] text-neutral-600">×</span>
                           </div>
-                          <p className="text-[10px] text-neutral-500 mt-0.5">
+                          <p className="text-[10px] text-neutral-500 mb-2">
                             Browser tab preview
                           </p>
+                          <button
+                            type="button"
+                            onClick={() => setConfig({ ...config, faviconUrl: '' })}
+                            className="flex items-center gap-1 text-[11px] text-red-400 hover:text-red-300 bg-transparent border-0 p-0 shadow-none transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3 h-3" /> Remove Favicon
+                          </button>
                         </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center p-4 rounded-lg border border-dashed border-neutral-800 bg-neutral-950/40 mt-2">
+                        <p className="text-[11px] text-neutral-500">
+                          No favicon set — the browser default will be used.
+                        </p>
                       </div>
                     )}
 
