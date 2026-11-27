@@ -28,6 +28,7 @@ import type { Preferences } from '../features/settings/preferences';
 import { AdminPage } from '../admin/AdminPage';
 import {
   readLocalSiteConfig,
+  saveLocalSiteConfig,
   fetchRemoteSiteConfig,
   applySiteConfigToDocument,
 } from '../admin/siteConfig';
@@ -199,11 +200,13 @@ function App() {
   }, []);
 
   // Developer site config initialization and real-time document title / favicon setup
+  const [, setSiteConfigVersion] = useState(0);
   useEffect(() => {
     const local = readLocalSiteConfig();
     applySiteConfigToDocument(local);
     void fetchRemoteSiteConfig().then((remote) => {
       if (remote) {
+        saveLocalSiteConfig(remote);
         applySiteConfigToDocument(remote);
       }
     });
@@ -213,6 +216,7 @@ function App() {
       if (detail) {
         applySiteConfigToDocument(detail);
       }
+      setSiteConfigVersion((v) => v + 1);
     };
     window.addEventListener('keeper:site-config-updated', onConfigUpdate);
 

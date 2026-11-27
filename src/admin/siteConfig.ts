@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { type DeveloperSiteConfig, INITIAL_SITE_CONFIG } from './types';
+import { syncGoogleFontsToDocument } from './fontUtils';
 
 const STORAGE_KEY = 'keeper_developer_site_config';
 
@@ -113,4 +114,5 @@ export function applySiteConfigToDocument(config: DeveloperSiteConfig) {
     }
     link.href = config.faviconUrl;
   }
+  syncGoogleFontsToDocument([...config.allowedFonts, config.defaultFont]);
 }
